@@ -1,0 +1,39 @@
+{
+  "name": "remitbee-playwright",
+  "version": "1.0.0",
+  "description": "Remitbee / WiseCapitals Playwright automation suite",
+  "scripts": {
+    "test:flow": "cross-env NODE_OPTIONS=--max-old-space-size=1024 npx playwright test --config=playwright.flow.config.ts --project=flow-chromium",
+    "flow:smoke": "cross-env NODE_OPTIONS=--max-old-space-size=1024 npx playwright test --config=playwright.flow.config.ts --project=flow-chromium --grep @smoke",
+    "flow:regression": "cross-env NODE_OPTIONS=--max-old-space-size=1024 npx playwright test --config=playwright.flow.config.ts --project=flow-chromium --grep @regression",
+    "flow:signup": "cross-env NODE_OPTIONS=--max-old-space-size=1024 npx playwright test --config=playwright.flow.config.ts --project=flow-chromium tests/flows/00-signup.flow.spec.ts",
+    "flow:auth": "cross-env NODE_OPTIONS=--max-old-space-size=1024 npx playwright test --config=playwright.flow.config.ts --project=flow-chromium tests/flows/01-auth.flow.spec.ts",
+    "flow:dashboard": "cross-env NODE_OPTIONS=--max-old-space-size=1024 npx playwright test --config=playwright.flow.config.ts --project=flow-chromium tests/flows/02-dashboard.flow.spec.ts",
+    "flow:send-money": "cross-env NODE_OPTIONS=--max-old-space-size=1024 npx playwright test --config=playwright.flow.config.ts --project=flow-chromium tests/flows/03-send-money.flow.spec.ts",
+    "flow:exchange": "cross-env NODE_OPTIONS=--max-old-space-size=1024 npx playwright test --config=playwright.flow.config.ts --project=flow-chromium tests/flows/04-exchange.flow.spec.ts",
+    "flow:wallet": "cross-env NODE_OPTIONS=--max-old-space-size=1024 npx playwright test --config=playwright.flow.config.ts --project=flow-chromium tests/flows/05-wallet.flow.spec.ts",
+    "flow:recipients": "cross-env NODE_OPTIONS=--max-old-space-size=1024 npx playwright test --config=playwright.flow.config.ts --project=flow-chromium tests/flows/06-recipients.flow.spec.ts",
+    "flow:settings": "cross-env NODE_OPTIONS=--max-old-space-size=1024 npx playwright test --config=playwright.flow.config.ts --project=flow-chromium tests/flows/07-settings.flow.spec.ts",
+    "flow:transactions": "cross-env NODE_OPTIONS=--max-old-space-size=1024 npx playwright test --config=playwright.flow.config.ts --project=flow-chromium tests/flows/08-transactions.flow.spec.ts",
+    "flow:rates": "cross-env NODE_OPTIONS=--max-old-space-size=1024 npx playwright test --config=playwright.flow.config.ts --project=flow-chromium tests/flows/09-rates.flow.spec.ts",
+    "flow:rewards": "cross-env NODE_OPTIONS=--max-old-space-size=1024 npx playwright test --config=playwright.flow.config.ts --project=flow-chromium tests/flows/10-rewards.flow.spec.ts",
+    "flow:verification": "cross-env NODE_OPTIONS=--max-old-space-size=1024 npx playwright test --config=playwright.flow.config.ts --project=flow-chromium tests/flows/12-verification.flow.spec.ts",
+    "flow:account": "cross-env NODE_OPTIONS=--max-old-space-size=1024 npx playwright test --config=playwright.flow.config.ts --project=flow-chromium tests/flows/13-account.flow.spec.ts",
+    "flow:escalation": "cross-env NODE_OPTIONS=--max-old-space-size=1024 npx playwright test --config=playwright.flow.config.ts --project=flow-chromium tests/flows/14-escalation.flow.spec.ts",
+    "flow:dtone": "cross-env NODE_OPTIONS=--max-old-space-size=1024 npx playwright test --config=playwright.flow.config.ts --project=flow-chromium tests/flows/15-dtone.flow.spec.ts",
+    "flow:referral": "cross-env NODE_OPTIONS=--max-old-space-size=1024 npx playwright test --config=playwright.flow.config.ts --project=flow-chromium tests/flows/16-referral.flow.spec.ts",
+    "flow:voice": "cross-env NODE_OPTIONS=--max-old-space-size=1024 npx playwright test --config=playwright.flow.config.ts --project=flow-chromium tests/flows/19-voice.flow.spec.ts",
+    "flow:report": "npx playwright show-report"
+  },
+  "dependencies": {
+    "@typesafe-ai/sdk": "^0.6.0",
+    "dotenv": "^16.4.5",
+    "otplib": "^12.0.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.44.0",
+    "@types/node": "^20.14.0",
+    "cross-env": "^7.0.3",
+    "typescript": "^5.4.5"
+  }
+}
