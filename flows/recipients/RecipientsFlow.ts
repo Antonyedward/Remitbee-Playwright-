@@ -21,6 +21,26 @@ export class RecipientsFlow extends FlowBase {
     super(page);
   }
 
+  /** Default IFSC for India bank-deposit recipients (real SBI branch code, valid format). */
+  static readonly DEFAULT_IFSC = 'SBIN0000001';
+
+  /**
+   * Unique, letters-only recipient name. Names must not contain digits — the live form rejects
+   * 'PW' + Date.now() with "This first name may contain invalid characters" (seen RC-17..19).
+   * Maps each timestamp digit 0-9 to A-J.
+   */
+  /**
+   * Staging rejects a second recipient with the same bank details (BE035 "…with this receiving method
+   * already exists"), so every run needs a fresh account number. 12 digits from the timestamp.
+   */
+  static uniqueAccountNumber(): string {
+    return String(Date.now()).slice(-10) + String(Math.floor(Math.random() * 90) + 10);
+  }
+
+  static uniqueName(prefix = 'PW'): string {
+    return prefix + String(Date.now()).split('').map(d => String.fromCharCode(65 + Number(d))).join('');
+  }
+
   // ══════════════════════════════════════════════════════════════════
   //  RECIPIENTS LIST  /recipients
   // ══════════════════════════════════════════════════════════════════
@@ -29,6 +49,10 @@ export class RecipientsFlow extends FlowBase {
     await this.navigateSidebar('Recipients');
     await this.page.waitForURL(/\/recipients(\?|$)/i, { timeout: 15_000 });
     await this.dismissAllOverlays();
+    // RecipientsContainer.tsx renders #add-new-recipient only after the list finishes loading
+    // (!loading). Accounts with long recipient lists take well over 20s (seen live, RC-06).
+    await this.page.locator('#add-new-recipient:visible, [class*="Splash"]:visible').first()
+      .waitFor({ state: 'visible', timeout: 90_000 });
   }
 
   /** Splash / empty state or list container */
@@ -42,8 +66,10 @@ export class RecipientsFlow extends FlowBase {
 
   /** Click "Add new recipient" — id="add-new-recipient" */
   async clickAddNewRecipient(): Promise<void> {
-    await this.page.locator('#add-new-recipient').click();
-    await this.page.waitForURL(/\/recipients\/add/i, { timeout: 10_000 });
+    const btn = this.page.locator('#add-new-recipient:visible').first();
+    await btn.waitFor({ state: 'visible', timeout: 45_000 });
+    await btn.click();
+    await this.page.waitForURL(/\/recipients\/add/i, { timeout: 15_000 });
   }
 
   /** Click the first recipient in the list */
@@ -62,12 +88,17 @@ export class RecipientsFlow extends FlowBase {
 
   /** Recipient added success dialog — id="recipient-added-dialog" */
   async assertRecipientAddedDialog(): Promise<void> {
-    await expect(this.page.locator('#recipient-added-dialog')).toBeVisible({ timeout: 20_000 });
+    // Live trace: saveCustomerBeneficiaryMutationV2 takes ~13s on staging, then the app redirects to
+    // /recipients and only opens the dialog after beneficiaryPaginatedQuery (7s+) returns
+    // (RecipientsContainer.tsx renders it when recipientSuccessdialog && addedRecipient).
+    await this.page.waitForURL(/\/recipients\/?(\?.*)?$/, { timeout: 60_000 });
+    await expect(this.page.locator('#recipient-added-dialog')).toBeVisible({ timeout: 60_000 });
+    await expect(this.page.getByText(/new recipient added/i).first()).toBeVisible();
   }
 
   /** "Got it" button on success dialog — id="dialog-button-primaryAction" */
   async clickGotIt(): Promise<void> {
-    await this.page.locator('#dialog-button-primaryAction').click();
+    await this.page.locator('#recipient-added-dialog #dialog-button-primaryAction, #dialog-button-primaryAction:visible').first().click();
   }
 
   // ══════════════════════════════════════════════════════════════════
@@ -77,7 +108,9 @@ export class RecipientsFlow extends FlowBase {
 
   async assertAddCountryStep(): Promise<void> {
     await this.page.waitForURL(/add-country/i, { timeout: 10_000 });
-    await expect(this.page.locator('#send-money-country-selection')).toBeVisible({ timeout: 10_000 });
+    // DropDownField.tsx puts the id on BOTH a container <div> and a <button> — target the button
+    // (an unqualified '#send-money-country-selection' is a strict-mode violation; seen live RC-03..10).
+    await expect(this.page.locator('button#send-money-country-selection')).toBeVisible({ timeout: 15_000 });
   }
 
   /**
@@ -86,10 +119,46 @@ export class RecipientsFlow extends FlowBase {
    * Search input appears after click; items in #list-container
    */
   async selectRecipientCountry(countryName: string): Promise<void> {
-    await this.page.locator('#send-money-country-selection').click();
-    const searchInput = this.page.locator('#send-money-country-selection').locator('..').locator('input').first();
-    await searchInput.fill(countryName);
-    await this.page.locator(`#list-container div, ul li div`).filter({ hasText: countryName }).first().click();
+    const field = this.page.locator('button#send-money-country-selection');
+    await field.waitFor({ state: 'visible', timeout: 15_000 });
+    await expect(async () => {
+      if (!((await field.textContent()) ?? '').match(new RegExp(countryName, 'i'))) {
+        // DropDownList renders its search box as input#search (sibling of the field, not inside it)
+        const search = this.page.locator('input#search');
+        if (!(await search.isVisible().catch(() => false))) await field.click();
+        await search.waitFor({ state: 'visible', timeout: 5_000 });
+        await search.fill(countryName);
+        await this.page.locator('li[data-item]:visible')
+          .filter({ hasText: new RegExp(`^\\s*${countryName}\\b`, 'i') })
+          .first().click({ timeout: 5_000 });
+      }
+      await expect(field).toContainText(new RegExp(countryName, 'i'), { timeout: 3_000 });
+    }).toPass({ timeout: 30_000, intervals: [500, 1_000, 2_000] });
+  }
+
+  /**
+   * Pick the first country in the list that has more than one receiving currency — only then does
+   * AddCountry.tsx render the #send-money-currency-selection dropdown. Each option's data-item JSON
+   * carries its `currencies` array, so this is data-driven rather than a guessed country name.
+   * Returns the chosen country name.
+   */
+  async selectFirstMultiCurrencyCountry(): Promise<string> {
+    const field = this.page.locator('button#send-money-country-selection');
+    await field.waitFor({ state: 'visible', timeout: 15_000 });
+    await field.click();
+    await this.page.locator('li[data-item]:visible').first().waitFor({ state: 'visible', timeout: 10_000 });
+    const index = await this.page.locator('li[data-item]').evaluateAll((els) =>
+      els.findIndex((el) => {
+        try { return (JSON.parse(el.getAttribute('data-item') || '{}').currencies || []).length > 1; }
+        catch { return false; }
+      }));
+    if (index < 0) throw new Error('No country with more than one receiving currency in the list');
+    const option = this.page.locator('li[data-item]').nth(index);
+    const name = ((await option.textContent()) ?? '').trim();
+    await option.scrollIntoViewIfNeeded();
+    await option.click();
+    await expect(field).not.toContainText(/select country/i, { timeout: 5_000 });
+    return name;
   }
 
   /**
@@ -97,8 +166,10 @@ export class RecipientsFlow extends FlowBase {
    * Dropdown: id="send-money-currency-selection"
    */
   async selectReceivingCurrency(currencyName: string): Promise<void> {
-    await this.page.locator('#send-money-currency-selection').click();
-    await this.page.locator(`#list-container div`).filter({ hasText: currencyName }).first().click();
+    const field = this.page.locator('button#send-money-currency-selection');
+    await field.click();
+    await this.page.locator('li[data-item]:visible').filter({ hasText: currencyName }).first().click();
+    await expect(field).toContainText(currencyName, { timeout: 5_000 });
   }
 
   /** Continue from country step — id="send-money-addCountry" */
@@ -121,13 +192,19 @@ export class RecipientsFlow extends FlowBase {
    * Select a main receiving method by label text.
    * The method list is rendered after id="recipients-select-method".
    */
+  /**
+   * Receiving-method options (AddReceivingMethod.tsx). Labels come from the backend per corridor —
+   * for India the live page shows "Bank deposit" (default-selected) and "UPI"; older data used
+   * "Bank Transfer", so accept either for the bank option.
+   */
   async selectReceivingMethod(methodLabel: string): Promise<void> {
-    const method = this.page
-      .locator('[class*="Typography_rb-typography-label1"]')
-      .filter({ hasText: methodLabel })
-      .first();
-    await method.waitFor({ state: 'visible' });
-    await method.click({ force: true });
+    const pattern = /^bank (deposit|transfer)$/i.test(methodLabel)
+      ? /^\s*bank (deposit|transfer)\s*$/i
+      : new RegExp(`^\\s*${methodLabel}\\s*$`, 'i');
+    // Note: #recipients-select-method is the step HEADING (Typography), not a container of the options.
+    const method = this.page.getByText(pattern).first();
+    await method.waitFor({ state: 'visible', timeout: 20_000 });
+    await method.click();
   }
 
   /** Continue from receiving method step — id="recipients-addCountry" */
@@ -369,6 +446,7 @@ export class RecipientsFlow extends FlowBase {
     firstName: string;
     lastName: string;
     accountNumber: string;
+    ifsc?: string;
   }): Promise<void> {
     await this.navigateToRecipients();
     await this.clickAddNewRecipient();
@@ -390,6 +468,10 @@ export class RecipientsFlow extends FlowBase {
     await this.fillFirstName(params.firstName);
     await this.fillLastName(params.lastName);
     await this.fillAccountNumber(params.accountNumber);
+    // India (and similar corridors) require IFSC — fill it whenever the field is on the form.
+    if (params.ifsc || await this.page.locator('#ifsc').isVisible().catch(() => false)) {
+      await this.fillIFSC(params.ifsc ?? RecipientsFlow.DEFAULT_IFSC);
+    }
     await this.clickBeneficiaryContinue();
 
     // Success dialog

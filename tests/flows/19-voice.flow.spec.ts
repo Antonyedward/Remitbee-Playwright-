@@ -21,10 +21,11 @@ import { expect } from '@playwright/test';
 import { test }   from '../../flows/voice/voiceFixture';
 import * as dotenv from 'dotenv';
 dotenv.config();
+import { ENV } from '../../config/environments';
 
 const BASE_URL = process.env.BASE_URL ?? 'https://www.cp.wisecapitals.com';
 const EMAIL    = process.env.PERSONAL_EMAIL ?? '';
-const PASSWORD = process.env.USER_PASSWORD  ?? '';
+const PASSWORD = ENV.USER_PASSWORD; // shared test-account password (config/environments.ts)
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 

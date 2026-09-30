@@ -30,10 +30,14 @@ export class DashboardFlow extends FlowBase {
   }
 
   async assertQuickActionsSendMoney(): Promise<void> {
-    // CP uses id="dashboard-quick-actions" for the quick-actions section
-    const quickActions = this.page.locator('#dashboard-quick-actions').first();
-    await quickActions.waitFor({ state: 'visible' });
-    await expect(quickActions).toBeVisible();
+    // #dashboard-quick-actions is MOBILE ONLY (inside {isMobile && ...} in DashboardWizard.tsx).
+    // On desktop viewport (1280×800) it is never rendered.
+    // On desktop the sidebar always shows id="menu-send_money" instead.
+    const sendMoneyNav = this.page
+      .locator('#dashboard-quick-actions, #menu-send_money')
+      .first();
+    await sendMoneyNav.waitFor({ state: 'visible', timeout: 15_000 });
+    await expect(sendMoneyNav).toBeVisible();
   }
 
   async assertRecentTransactions(): Promise<void> {
@@ -60,13 +64,16 @@ export class DashboardFlow extends FlowBase {
   }
 
   async clickSendMoneyQuickAction(): Promise<void> {
-    // Click inside quick-actions section, the Send button
-    const quickActions = this.page.locator('#dashboard-quick-actions');
-    const sendBtn = quickActions
-      .locator('a, button')
-      .filter({ hasText: /send/i })
-      .first();
-    await sendBtn.click({ force: true });
+    // On mobile: quick-actions section contains Send button
+    // On desktop: sidebar menu item id="menu-send_money"
+    const mobileQA = this.page.locator('#dashboard-quick-actions');
+    const mobileVisible = await mobileQA.isVisible().catch(() => false);
+    if (mobileVisible) {
+      const sendBtn = mobileQA.locator('a, button').filter({ hasText: /send/i }).first();
+      await sendBtn.click({ force: true });
+    } else {
+      await this.page.locator('#menu-send_money').first().click({ force: true });
+    }
   }
 
   async clickViewAllTransactions(): Promise<void> {
@@ -75,11 +82,11 @@ export class DashboardFlow extends FlowBase {
   }
 
   async assertAccountSwitcher(): Promise<void> {
-    const switcher = this.page
-      .locator('[class*="account"], [class*="Account"]')
-      .filter({ hasText: /personal|business/i })
-      .first();
-    await switcher.waitFor({ state: 'visible' });
+    // CP UserMenu trigger button contains id="fullname" Typography (UserMenu.tsx:263).
+    // The dropdown panel (id="user-menu-dropdown") only exists in the DOM when opened.
+    // id="fullname" is always visible in the top bar — it's the user's full name display.
+    const switcher = this.page.locator('#fullname').first();
+    await switcher.waitFor({ state: 'visible', timeout: 15_000 });
     await expect(switcher).toBeVisible();
   }
 }

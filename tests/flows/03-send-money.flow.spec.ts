@@ -42,23 +42,18 @@ test.describe('03 — SendMoney', () => {
   test('SM-05 @smoke @regression — wallet payment method shown on payment page', async ({ page }) => {
     await flow.loginForFlow(ENV.CAD_BALANCE_EMAIL, ENV.USER_PASSWORD);
     await flow.navigateToSendMoney();
-    await flow.enterSendAmount(ENV.SEND_MONEY_AMOUNT);
-    await flow.clickContinue();
-    // Wallet option should be visible for account with CAD balance
-    const walletOption = flow['page']
-      .locator('[class*="wallet"], #pay-from-balance')
-      .or(flow['page'].locator('text=/wallet|balance/i'))
-      .first();
-    await expect(walletOption).toBeVisible({ timeout: 15_000 });
+    // Converter → purpose → payment step (SelectPayType.tsx)
+    await flow.goToPaymentStep(ENV.SEND_MONEY_AMOUNT);
+    // Wallet option label is "CAD Balance" (payment_types.pay_with_wallet_balance)
+    await expect(flow.paymentOption(/^CAD Balance$/i)).toBeVisible({ timeout: 15_000 });
   });
 
   // SM-01 — Adding recipient by existing user
   test('SM-06 @regression — existing recipient visible in recipient list', async ({ page }) => {
     await flow.loginForFlow(ENV.PERSONAL_EMAIL, ENV.USER_PASSWORD);
     await flow.navigateToSendMoney();
-    const recipient = flow['page']
-      .locator('[class*="recipient"], [class*="Recipient"]')
-      .first();
+    // RecipientLists.tsx: list container id="send-money-recipientList", one child div per recipient
+    const recipient = page.locator('#send-money-recipientList > div').first();
     await expect(recipient).toBeVisible({ timeout: 15_000 });
   });
 
@@ -66,10 +61,8 @@ test.describe('03 — SendMoney', () => {
   test('SM-07 @regression — add new recipient option available', async ({ page }) => {
     await flow.loginForFlow(ENV.PERSONAL_EMAIL, ENV.USER_PASSWORD);
     await flow.navigateToSendMoney();
-    const addRecipient = flow['page']
-      .locator('button:has-text("Add"), button:has-text("New recipient"), [class*="add-recipient"]')
-      .first();
-    await expect(addRecipient).toBeVisible({ timeout: 10_000 });
+    // CP uses id="send-money-addRecipient" (RecipientLists.tsx)
+    await expect(page.locator('#send-money-addRecipient')).toBeVisible({ timeout: 15_000 });
   });
 
   // SM-22/SM-24 — Special rate on subsequent transaction
@@ -83,13 +76,9 @@ test.describe('03 — SendMoney', () => {
   test('SM-09 @regression — debit card negative scenario — invalid card rejected', async ({ page }) => {
     await flow.loginForFlow(ENV.SEND_MONEY_DEBIT_EMAIL, ENV.SEND_MONEY_DEBIT_PASSWORD);
     await flow.navigateToSendMoney();
-    await flow.enterSendAmount(ENV.SEND_MONEY_AMOUNT);
-    await flow.clickContinue();
-    // Confirm debit card payment method option is reachable
-    const debitOption = flow['page']
-      .locator('[class*="debit"], [class*="card"], text=/debit|card/i')
-      .first();
-    await expect(debitOption).toBeVisible({ timeout: 15_000 });
+    await flow.goToPaymentStep(ENV.SEND_MONEY_AMOUNT);
+    // Confirm debit card payment method option is reachable ("Debit card" label in SelectPayType)
+    await expect(flow.paymentOption(/^Debit card$/i)).toBeVisible({ timeout: 15_000 });
   });
 
   // SM-27 — Send money limits Level 1
@@ -113,12 +102,8 @@ test.describe('03 — SendMoney', () => {
     await flow.loginForFlow(ENV.VL1_LIMIT_CHECK_EMAIL, ENV.USER_PASSWORD);
     await flow.navigateToSendMoney();
     await flow.enterSendAmount('10001');
-    await flow.clickContinue();
-    const limitMsg = flow['page']
-      .locator('[class*="error"], [class*="limit"]')
-      .filter({ hasText: /limit|exceed|maximum/i })
-      .first();
-    await expect(limitMsg).toBeVisible({ timeout: 10_000 });
+    // Limit alert renders live while typing (before Continue) in #transfer-detail-compliance-notification
+    await flow.assertMaximumAmountError();
   });
 
   // SM-04/Business — EFT for business
@@ -132,10 +117,12 @@ test.describe('03 — SendMoney', () => {
   test('SM-14 @smoke @regression — new user send money flow shows recipient selection', async ({ page }) => {
     await flow.loginForFlow(ENV.FIRST_TIME_USER_EMAIL, ENV.USER_PASSWORD);
     await flow.navigateToSendMoney();
-    const page_heading = flow['page']
-      .locator('[class*="title"], [class*="heading"]')
+    // First-time users land on the country-selection step: id="send-money-addCountry"
+    // or the converter box if they somehow have a recipient. Accept either.
+    const page_indicator = flow['page']
+      .locator('#send-money-addCountry, #send-money-coverter-box, [class*="rb-sendMoney"]')
       .first();
-    await expect(page_heading).toBeVisible({ timeout: 15_000 });
+    await expect(page_indicator).toBeVisible({ timeout: 15_000 });
   });
 
   // SM-02/SM-03 — Debit card money transfer
@@ -146,11 +133,15 @@ test.describe('03 — SendMoney', () => {
   });
 
   // Send money minimum amount error
-  test('SM-16 @regression — minimum amount validation shown', async () => {
+  test('SM-16 @regression — minimum amount validation shown', async ({ page }) => {
     await flow.loginForFlow();
     await flow.navigateToSendMoney();
-    await flow.enterSendAmount('0.01');
-    await flow.clickContinue();
+    // $5: above the receive-side minimum for normal corridors (live DOM: $0.01 tripped
+    // "Receiving amount is less than the minimum limit 10 GHS" and disabled Continue),
+    // but below the $10 CAD send minimum, which is checked when Continue is clicked.
+    await flow.enterSendAmount('5');
+    // Clicks Continue (retrying — first click is often swallowed) until the min message appears
+    await flow.triggerMinimumAmountError();
     await flow.assertMinimumAmountError();
   });
 
@@ -158,6 +149,8 @@ test.describe('03 — SendMoney', () => {
   test('SM-17 @regression — fee displayed on send money page', async () => {
     await flow.loginForFlow();
     await flow.navigateToSendMoney();
+    // Fee (id="total-fees") only renders on the payment step
+    await flow.goToPaymentStep(ENV.SEND_MONEY_AMOUNT);
     await flow.assertFee();
   });
 
@@ -180,11 +173,12 @@ test.describe('03 — SendMoney', () => {
   test('SM-20 @regression — payment method edit option visible', async ({ page }) => {
     await flow.loginForFlow(ENV.PERSONAL_EMAIL, ENV.USER_PASSWORD);
     await flow.navigateToSendMoney();
-    await flow.enterSendAmount(ENV.SEND_MONEY_AMOUNT);
-    await flow.clickContinue();
-    const editBtn = flow['page']
-      .locator('button:has-text("Edit"), button:has-text("Change")')
-      .first();
-    await expect(editBtn).toBeVisible({ timeout: 15_000 });
+    await flow.goToPaymentStep(ENV.SEND_MONEY_AMOUNT);
+    // Pick a non-card method, continue to Overview, where each summary has an edit action
+    // (Overview.tsx accordionActionId="payment-summary-edit"). Nothing is submitted here —
+    // the transfer is only created by #create-transaction, which this test never clicks.
+    await flow.selectPaymentMethod(/^(e-Transfer|Bill Payment|CAD Balance|Direct withdrawal \(EFT\))$/i);
+    await page.locator('#payment-type-continue').click({ force: true });
+    await expect(page.locator('#payment-summary-edit').first()).toBeVisible({ timeout: 25_000 });
   });
 });

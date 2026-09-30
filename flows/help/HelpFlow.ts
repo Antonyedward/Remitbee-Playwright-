@@ -22,7 +22,10 @@ export class HelpFlow extends FlowBase {
   }
 
   async searchHelp(query: string): Promise<void> {
-    const input = this.page.locator('input[type="search"], input[placeholder*="search" i]').first();
+    // CP uses id="search-transactions" for the help search input (HelpSearchArticles.tsx)
+    const input = this.page
+      .locator('#search-transactions, input[type="search"], input[placeholder*="search" i]')
+      .first();
     await input.waitFor({ state: 'visible' });
     await input.fill(query);
     await this.page.keyboard.press('Enter');

@@ -77,9 +77,9 @@ export class ScheduleFlow extends FlowBase {
   }
 
   async assertScheduleListVisible(): Promise<void> {
-    // CP may show id="scheduled-transactions" list or a wizard/empty state
+    // No explicit list container ID in CP scheduleTransaction/ source; use class-based selector
     const list = this.page
-      .locator('#scheduled-transactions, [class*="schedule"], [class*="Schedule"]')
+      .locator('[class*="schedule"], [class*="Schedule"]')
       .first();
     await list.waitFor({ state: 'visible', timeout: 15_000 });
     await expect(list).toBeVisible();

@@ -13,10 +13,13 @@ export class DtoneFlow extends FlowBase {
   }
 
   async selectCountry(country: string): Promise<void> {
-    // CP uses id="select-country-service" for the search/filter input in the country picker.
-    // Individual country rows have id={countryId} (e.g. "NG" for Nigeria).
-    // Strategy: type into the search input to filter the list, then click the matching row.
-    const searchInput = this.page.locator('#select-country-service').first();
+    // CP uses id='select-country' as a heading for the country-selection step.
+    // There is no search-input with id in the DTone wizard — the country list is a scrollable
+    // grid of rows; filter by text and click the first matching item.
+    // Try any visible search/filter input first (placeholder-based).
+    const searchInput = this.page
+      .locator('input[placeholder*="search" i], input[placeholder*="country" i], input[placeholder*="filter" i]')
+      .first();
     const searchVisible = await searchInput.isVisible().catch(() => false);
     if (searchVisible) {
       await searchInput.fill(country);

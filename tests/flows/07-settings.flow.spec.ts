@@ -2,206 +2,193 @@ import { test, expect } from '@playwright/test';
 import { SettingsFlow } from '../../flows/settings/SettingsFlow';
 import { ENV } from '../../config/environments';
 
+/**
+ * 07 — Settings (rewritten 2026-09-30 from the live DOM + Jam recordings).
+ * Sending-limits tests removed: that tab no longer exists in Settings (commented out in Settings.tsx).
+ *
+ * State-changing tests (ST-05, ST-07, ST-08, ST-10, ST-14) always put the account back the way
+ * they found it, so the suite can be re-run. They all use the default flow account (PERSONAL_EMAIL).
+ */
 test.describe('07 — Settings', () => {
+  test.describe.configure({ timeout: 150_000 });
   let flow: SettingsFlow;
 
   test.beforeEach(async ({ page }) => {
     flow = new SettingsFlow(page);
-  });
-
-  // TC-24/TC-25 — Enable/Disable 2FA via phone
-  test('ST-01 @smoke @regression — settings page loads', async () => {
     await flow.loginForFlow();
     await flow.navigateToSettings();
   });
 
-  test('ST-02 @regression — profile tab navigates correctly', async () => {
-    await flow.loginForFlow();
-    await flow.navigateToSettings();
-    await flow.clickTab('Profile');
+  // ── General ──────────────────────────────────────────────────────────────────
+
+  test('ST-01 @smoke @regression — settings page loads on the security tab', async ({ page }) => {
+    await expect(page.getByRole('heading', { name: /2-step verification/i })).toBeVisible({ timeout: 30_000 });
   });
 
-  test('ST-03 @regression — security tab navigates correctly', async () => {
-    await flow.loginForFlow();
-    await flow.navigateToSettings();
-    await flow.clickTab('Security');
+  test('ST-02 @regression — all six settings tabs are shown', async ({ page }) => {
+    for (const tab of SettingsFlow.TABS) {
+      await expect(page.locator(`#${tab}:visible`).first()).toBeVisible({ timeout: 15_000 });
+    }
+    await expect(page.getByText(/sending limits/i)).toHaveCount(0);
   });
 
-  // TC-42 — Password change in settings
-  test('ST-04 @regression — change password tab visible in security', async () => {
-    await flow.loginForFlow();
-    await flow.navigateToSettings();
-    await flow.clickTab('Security');
-    const changePasswordSection = flow['page']
-      .getByText(/change password|password/i)
-      .first();
-    await changePasswordSection.waitFor({ state: 'visible', timeout: 10_000 });
+  // ── Security ─────────────────────────────────────────────────────────────────
+
+  test('ST-03 @smoke @regression — security tab shows 2-step verification status and action', async ({ page }) => {
+    await flow.openTab('security');
+    const status = await flow.getTwoStepStatus();
+    await expect(flow.twoStepStatus()).toHaveText(status);
+    await expect(page.locator(status === 'ON' ? '#turn-off' : '#activate')).toBeVisible();
+    await expect(page.getByRole('heading', { name: /recent logins/i })).toBeVisible();
   });
 
-  // TC-24/TC-25 — 2FA toggle
-  test('ST-05 @smoke @regression — 2FA toggle visible in security tab', async () => {
-    await flow.loginForFlow();
-    await flow.navigateToSettings();
-    await flow.clickTab('Security');
-    const twoFA = flow['page']
-      .getByText(/2FA|two.factor|authentication/i)
-      .first();
-    await twoFA.waitFor({ state: 'visible', timeout: 10_000 });
+  test('ST-04 @regression — deactivate asks for confirmation; "No" keeps 2-step on', async ({ page }) => {
+    await flow.openTab('security');
+    test.skip(await flow.getTwoStepStatus() === 'OFF', '2-step is OFF on this account — nothing to deactivate');
+    await page.locator('#turn-off').click();
+    await flow.assertTurnOffDialog();
+    await page.locator('#turn-off-dialog #dialog-button-secondaryAction').click(); // "No"
+    await expect(page.locator('#turn-off-dialog')).toBeHidden({ timeout: 10_000 });
+    await expect(page.locator('#turn-off')).toBeVisible();
+    await expect(flow.twoStepStatus()).toHaveText('ON');
   });
 
-  // TC-33/TC-34 — Continue button disabled by default in 2FA popup
-  test('ST-06 @regression — 2FA popup continue button disabled by default', async () => {
-    await flow.loginForFlow();
-    await flow.navigateToSettings();
-    await flow.clickTab('Security');
-    const toggle2FA = flow['page']
-      .locator('[class*="toggle"], [class*="switch"]')
-      .filter({ hasText: /2FA|factor/i })
-      .first();
-    const isVisible = await toggle2FA.isVisible().catch(() => false);
-    if (isVisible) {
-      await toggle2FA.click({ force: true });
-      const continueBtn = flow['page'].locator('button:has-text("Continue")').first();
-      const disabled = await continueBtn.getAttribute('disabled');
-      expect(disabled !== null || true).toBe(true); // Either disabled or not present
+  test('ST-05 @smoke @regression — 2-step verification can be deactivated and activated again', async () => {
+    await flow.openTab('security');
+    // Jam 01df64d4: Activate → SMS code → Continue → Got it; Deactivate → Yes → SMS code → Continue → Got it.
+    // Whatever state the account starts in, flip it and flip it back.
+    if (await flow.getTwoStepStatus() === 'ON') {
+      await flow.deactivateTwoStep();
+      await flow.activateTwoStep();
+    } else {
+      await flow.activateTwoStep();
+      await flow.deactivateTwoStep();
     }
   });
 
-  // TC-39/TC-40 — Connect a Bank
-  test('ST-07 @smoke @regression — connect bank tab visible in settings', async () => {
-    await flow.loginForFlow();
-    await flow.navigateToSettings();
-    const bankTab = flow['page']
-      .locator('[id^="menu-item-"], [role="tab"]')
-      .filter({ hasText: /bank|payment/i })
-      .first();
-    await bankTab.waitFor({ state: 'visible', timeout: 10_000 }).catch(() => {
-      // Tab may be labeled differently — still passes
-    });
-  });
+  // ── Notifications ────────────────────────────────────────────────────────────
 
-  // TC-02 — Limits display Level 1
-  test('ST-08 @regression — sending limits tab visible for level 1 user', async () => {
-    await flow.loginForFlow(ENV.LEVEL1_EMAIL, ENV.USER_PASSWORD);
-    await flow.navigateToSettings();
-    const limitsTab = flow['page']
-      .locator('[id^="menu-item-"], [role="tab"], a')
-      .filter({ hasText: /limit/i })
-      .first();
-    await expect(limitsTab).toBeVisible({ timeout: 10_000 });
-  });
-
-  // TC-02 — Limits display Level 2
-  test('ST-09 @regression — sending limits tab visible for level 2 user', async () => {
-    await flow.loginForFlow(ENV.LEVEL2_EMAIL, ENV.USER_PASSWORD);
-    await flow.navigateToSettings();
-    const limitsTab = flow['page']
-      .locator('[id^="menu-item-"], [role="tab"], a')
-      .filter({ hasText: /limit/i })
-      .first();
-    await expect(limitsTab).toBeVisible({ timeout: 10_000 });
-  });
-
-  // TC-02 — Limits display Level 3
-  test('ST-10 @regression — sending limits tab visible for level 3 user', async () => {
-    await flow.loginForFlow(ENV.LEVEL3_EMAIL, ENV.USER_PASSWORD);
-    await flow.navigateToSettings();
-    const limitsTab = flow['page']
-      .locator('[id^="menu-item-"], [role="tab"], a')
-      .filter({ hasText: /limit/i })
-      .first();
-    await expect(limitsTab).toBeVisible({ timeout: 10_000 });
-  });
-
-  // TC-02 — Limits display Level 4
-  test('ST-11 @regression — sending limits tab visible for level 4 user', async () => {
-    await flow.loginForFlow(ENV.LEVEL4_EMAIL, ENV.USER_PASSWORD);
-    await flow.navigateToSettings();
-    const limitsTab = flow['page']
-      .locator('[id^="menu-item-"], [role="tab"], a')
-      .filter({ hasText: /limit/i })
-      .first();
-    await expect(limitsTab).toBeVisible({ timeout: 10_000 });
-  });
-
-  // PP-01/PP-02/TC-38 — Connect bank (instant)
-  test('ST-12 @regression — link bank option visible in payment methods', async () => {
-    await flow.loginForFlow();
-    await flow.navigateToSettings();
-    const addBank = flow['page']
-      .locator('button:has-text("Add"), button:has-text("Link"), button:has-text("Connect")')
-      .filter({ hasText: /bank|account/i })
-      .first();
-    await expect(addBank).toBeVisible({ timeout: 15_000 });
-  });
-
-  // TC-01 — Sending limits for new user
-  test('ST-13 @regression — sending limits visible for new user', async () => {
-    await flow.loginForFlow(ENV.FIRST_TIME_USER_EMAIL, ENV.USER_PASSWORD);
-    await flow.navigateToSettings();
-    const limitsSection = flow['page']
-      .getByText(/limit|sending/i)
-      .first();
-    await expect(limitsSection).toBeVisible({ timeout: 10_000 });
-  });
-
-  // TC-53 — Password change negative scenario
-  test('ST-14 @regression — incorrect current password on change password shows error', async () => {
-    await flow.loginForFlow();
-    await flow.navigateToSettings();
-    await flow.clickTab('Security');
-    const changePasswordBtn = flow['page']
-      .locator('button:has-text("Change password"), button:has-text("Update password")')
-      .first();
-    const visible = await changePasswordBtn.isVisible().catch(() => false);
-    if (!visible) {
-      test.skip();
-      return;
+  test('ST-06 @regression — notifications tab shows allow toggle and preference rows', async ({ page }) => {
+    await flow.openTab('notifications');
+    await flow.ensureNotificationsAllowed();
+    await expect(page.getByText(/balance updates/i).first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText(/marketing updates/i).first()).toBeVisible();
+    for (const key of ['noti_wallet_update_email', 'noti_marketing_email', 'noti_marketing_sms', 'noti_referral_sms']) {
+      await expect(flow.notificationToggle(key)).toBeVisible();
     }
-    await changePasswordBtn.click({ force: true });
-    const currentPwdField = flow['page'].locator('input[name*="current"], input[name*="old"]').first();
-    await currentPwdField.fill('WrongPassword@123');
-    await flow.clickSave();
-    const error = flow['page'].locator('[class*="error"]').first();
-    await expect(error).toBeVisible({ timeout: 10_000 });
   });
 
-  // TC-48/TC-49 — Delete account validation
-  test('ST-15 @regression — delete account option visible in settings', async () => {
-    await flow.loginForFlow();
-    await flow.navigateToSettings();
-    const deleteOption = flow['page']
-      .getByText(/delete account|close account/i)
-      .first();
-    await expect(deleteOption).toBeVisible({ timeout: 10_000 });
+  test('ST-07 @smoke @regression — a notification toggle turns off and on and is saved', async ({ page }) => {
+    await flow.openTab('notifications');
+    await flow.ensureNotificationsAllowed();
+    const key = 'noti_marketing_email';
+    const toggle = flow.notificationToggle(key);
+    await toggle.waitFor({ state: 'visible', timeout: 15_000 });
+    const original = await SettingsFlow.isToggleOn(toggle);
+
+    for (const target of [!original, original]) {
+      await toggle.click();
+      await flow.expectToggle(toggle, target);
+      // Auto-save fires 500ms after the click — reload to prove it persisted.
+      await page.waitForTimeout(2_500);
+      await expect(async () => {
+        await page.reload({ waitUntil: 'domcontentloaded' });
+        await flow.expectToggle(flow.notificationToggle(key), target, 10_000);
+      }).toPass({ timeout: 45_000, intervals: [2_000, 3_000] });
+    }
   });
 
-  // TC-41 — Link new bank
-  test('ST-16 @smoke @regression — add new bank link from settings', async () => {
-    await flow.loginForFlow();
-    await flow.navigateToSettings();
-    const addNewBank = flow['page']
-      .locator('button:has-text("Add new"), button:has-text("Link new"), a:has-text("Add bank")')
-      .first();
-    await expect(addNewBank).toBeVisible({ timeout: 15_000 });
+  test('ST-08 @regression — "Allow notifications" off hides the preferences, on shows them again', async ({ page }) => {
+    await flow.openTab('notifications');
+    await flow.ensureNotificationsAllowed();
+    const master = flow.allowNotificationsToggle();
+    const row = page.locator('#toggle-noti_marketing_email');
+
+    await master.click();
+    await flow.expectToggle(master, false);
+    await expect(row).toHaveCount(0, { timeout: 15_000 });
+
+    await master.click(); // restore
+    await flow.expectToggle(master, true);
+    await expect(row.first()).toBeVisible({ timeout: 20_000 });
   });
 
-  // Save changes success
-  test('ST-17 @smoke @regression — save changes button visible in profile settings', async () => {
-    await flow.loginForFlow();
-    await flow.navigateToSettings();
-    const saveBtn = flow['page'].locator('#save-changes').first();
-    await expect(saveBtn).toBeVisible({ timeout: 10_000 });
+  // ── Payment preferences ─────────────────────────────────────────────────────
+
+  test('ST-09 @regression — payment preferences shows the preferred bank section', async ({ page }) => {
+    await flow.openTab('payment-preferences');
+    await expect(page.getByText('Preferred bank', { exact: true }).first()).toBeVisible({ timeout: 20_000 });
+    await expect(page.locator('#change-bank, #connect-bank').first()).toBeVisible({ timeout: 30_000 });
   });
 
-  // Notification settings
-  test('ST-18 @regression — notification settings tab visible', async () => {
-    await flow.loginForFlow();
-    await flow.navigateToSettings();
-    const notifTab = flow['page']
-      .locator('[id^="menu-item-"], [role="tab"], a')
-      .filter({ hasText: /notif/i })
-      .first();
-    await expect(notifTab).toBeVisible({ timeout: 10_000 });
+  test('ST-10 @smoke @regression — preferred bank can be changed', async () => {
+    await flow.openTab('payment-preferences');
+    // Jam 674a45f6: Change → pick a bank in the list → card shows the new bank.
+    const original = await flow.getPreferredBank(); // logo src — list and card name the bank differently
+    const before = (await flow.preferredBankCard().innerText().catch(() => '')).trim();
+    const chosen = await flow.choosePreferredBank({ excludeSrc: original });
+    expect(chosen).not.toBe(original);
+    await expect(flow.preferredBankCard()).not.toHaveText(before);
+    if (original) await flow.choosePreferredBank({ src: original }); // put it back
+  });
+
+  // ── Change password ─────────────────────────────────────────────────────────
+
+  test('ST-11 @regression — change password form fields are shown', async ({ page }) => {
+    await flow.openTab('change-password');
+    for (const id of ['#current_password', '#new_password', '#confirm_new_password']) {
+      await expect(page.locator(id)).toBeVisible({ timeout: 20_000 });
+    }
+    await expect(page.locator('#save:visible').first()).toHaveText(/update password/i);
+  });
+
+  test('ST-12 @smoke @regression — new password same as current shows "not used before" error', async ({ page }) => {
+    await flow.openTab('change-password');
+    // Jam bf5ea273. Re-using the current password is rejected, so the password never changes.
+    await flow.fillChangePassword(ENV.USER_PASSWORD, ENV.USER_PASSWORD);
+    await flow.clickUpdatePassword();
+    await expect(flow.snackbar(/choose a password that you have not used before/i)).toBeVisible({ timeout: 20_000 });
+    await expect(flow.snackbar(/password updated successfully/i)).toHaveCount(0);
+    await expect(page).toHaveURL(/step=change-password/);
+  });
+
+  // ── Rates subscriptions ─────────────────────────────────────────────────────
+
+  test('ST-13 @regression — rates subscriptions shows methods and frequency', async ({ page }) => {
+    await flow.openTab('rates-subscriptions');
+    await expect(flow.ratesToggle('Email notifications')).toBeVisible({ timeout: 20_000 });
+    await expect(flow.ratesToggle('Push notifications')).toBeVisible();
+    for (const id of ['#daily', '#weekly', '#monthly']) {
+      await expect(page.locator(`${id}:visible`).first()).toBeVisible();
+    }
+  });
+
+  test('ST-14 @smoke @regression — rates email toggle turns off and on and is saved', async ({ page }) => {
+    await flow.openTab('rates-subscriptions');
+    // Jam 91afdef8: toggle clicked on/off repeatedly — each click auto-saves.
+    const toggle = flow.ratesToggle('Email notifications');
+    await toggle.waitFor({ state: 'visible', timeout: 20_000 });
+    await page.waitForTimeout(1_000); // preferences load after first paint
+    const original = await SettingsFlow.isToggleOn(toggle);
+
+    for (const target of [!original, original]) {
+      await toggle.click();
+      await flow.expectToggle(toggle, target);
+      await page.waitForTimeout(2_500);
+      await expect(async () => {
+        await page.reload({ waitUntil: 'domcontentloaded' });
+        await flow.expectToggle(flow.ratesToggle('Email notifications'), target, 10_000);
+      }).toPass({ timeout: 45_000, intervals: [2_000, 3_000] });
+    }
+  });
+
+  // ── Delete account ──────────────────────────────────────────────────────────
+
+  test('ST-15 @regression — delete account shows Delete and Keep buttons (not clicked)', async ({ page }) => {
+    await flow.openTab('delete-account');
+    await expect(page.getByText('Are you sure?').first()).toBeVisible({ timeout: 20_000 });
+    await expect(page.locator('#delete-account-1')).toBeVisible();
+    await expect(page.locator('#delete-account-1')).toBeEnabled();
+    await expect(page.locator('#keep-account-1')).toBeVisible();
   });
 });

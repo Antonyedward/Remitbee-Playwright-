@@ -27,26 +27,38 @@ test.describe('08 — Transactions', () => {
     await flow.loginForFlow(ENV.TX_HISTORY_EMAIL, ENV.USER_PASSWORD);
     await flow.navigateToTransactions();
     await flow.assertTransactionListVisible();
-    // Click into first transaction
+    // Click into first transaction — CP uses class rb-transactionList-box on each item
+    // (individual items also have id="transaction-{id}" but the class is more reliable for nth())
     const firstTx = flow['page']
-      .locator('[class*="transaction-item"], [class*="TransactionItem"]')
+      .locator('[class*="rb-transactionList-box"], [id^="transaction-"]:not([id$="-container"])')
       .first();
     await firstTx.click({ force: true }).catch(() => {});
   });
 
   // TC-44/TC-48 — Apply filters
-  test('TX-04 @regression — filter by status works', async () => {
+  test('TX-04 @regression — filter by status works', async ({ page }) => {
     await flow.loginForFlow(ENV.TX_HISTORY_EMAIL, ENV.USER_PASSWORD);
     await flow.navigateToTransactions();
-    await flow.filterByStatus('Completed');
-    await flow.assertTransactionListVisible();
+    // Jam 42edbdde: Completed + Cancelled + In Progress → Apply → Filters (1) → Clear all filters
+    await flow.filterByStatuses(['Completed', 'Cancelled', 'In Progress']);
+    await expect(page).toHaveURL(/transaction_status=COMPLETED/);
+    await expect(page).toHaveURL(/transaction_status=CANCELLED/);
+    await expect(page).toHaveURL(/transaction_status=CUST_TRAN/);
+    await expect(flow.rows().first()).toBeVisible({ timeout: 30_000 });
+    for (const row of await flow.rows().allInnerTexts()) {
+      expect(row).toMatch(/completed|cancelled|in progress/i);
+    }
+    await flow.clearAllFilters();
+    await flow.waitForResults();
   });
 
   // TC-45/TC-46 — Apply date range filter
-  test('TX-05 @regression — date range filter applies correctly', async () => {
+  test('TX-05 @regression — date range filter applies correctly', async ({ page }) => {
     await flow.loginForFlow(ENV.TX_HISTORY_EMAIL, ENV.USER_PASSWORD);
     await flow.navigateToTransactions();
-    await flow.filterByDateRange('2024-05-01', '2024-05-16');
+    // Date filter is chip-based now (Last month / quarter / 6 months / year) — no from/to inputs.
+    await flow.filterByDateChip('lastYear');
+    await expect(page.locator('#filters')).toHaveText(/Filters\s*\(1\)/);
   });
 
   // TC-51 — Search for non-existent transaction
@@ -55,6 +67,7 @@ test.describe('08 — Transactions', () => {
     await flow.navigateToTransactions();
     await flow.searchTransaction('@#$%^&*()');
     await flow.assertNoTransactions();
+    await expect(flow['page'].getByText(/did not match any transactions/i)).toBeVisible();
   });
 
   // TC-34/SM-46 — View transaction status
@@ -62,8 +75,9 @@ test.describe('08 — Transactions', () => {
     await flow.loginForFlow(ENV.TX_HISTORY_EMAIL, ENV.USER_PASSWORD);
     await flow.navigateToTransactions();
     await flow.assertTransactionListVisible();
+    // CP uses class rb-transactionList-box on each item, or id="transaction-{id}" on each row
     const firstTx = flow['page']
-      .locator('[class*="transaction-item"], [class*="TransactionItem"], [class*="transaction-row"]')
+      .locator('[class*="rb-transactionList-box"], [id^="transaction-"]:not([id$="-container"])')
       .first();
     const visible = await firstTx.isVisible().catch(() => false);
     if (visible) {
@@ -76,12 +90,12 @@ test.describe('08 — Transactions', () => {
   test('TX-08 @regression — account with no transactions shows empty state', async () => {
     await flow.loginForFlow(ENV.FIRST_TIME_USER_EMAIL, ENV.USER_PASSWORD);
     await flow.navigateToTransactions();
-    // Empty state OR transaction list — both valid
-    const state = flow['page']
-      .locator('[class*="empty"], [class*="no-transaction"], #error-no-results')
-      .or(flow['page'].locator('[class*="transaction"]'))
-      .first();
-    await expect(state).toBeVisible({ timeout: 15_000 });
+    // TransactionsWizard renders no list and no splash when the user has no transactions at all
+    // (the "No search results" splash is only for search/filters). Wait for loading to finish.
+    await expect(flow['page'].locator('#transaction-history')).toBeVisible({ timeout: 30_000 });
+    await flow['page'].waitForLoadState('networkidle', { timeout: 30_000 }).catch(() => {});
+    await expect(flow.rows()).toHaveCount(0, { timeout: 30_000 });
+    await expect(flow['page'].locator('#transactions-container [id$="-container"][id^="transaction-"]')).toHaveCount(0);
   });
 
   // TC-03/TC-04 — Exchange Currency / Send Money buttons
@@ -131,8 +145,9 @@ test.describe('08 — Transactions', () => {
     await flow.navigateToTransactions();
     await flow.assertTransactionListVisible();
     await flow.clickTransaction(0);
+    // CP uses id='need_help' in TransactionDetailsCard.tsx for the help/escalate element
     const helpLink = flow['page']
-      .locator('a:has-text("Help"), button:has-text("Help"), a:has-text("Escalate")')
+      .locator('#need_help, a:has-text("Help"), button:has-text("Help"), a:has-text("Escalate")')
       .first();
     await expect(helpLink).toBeVisible({ timeout: 10_000 });
   });
@@ -181,16 +196,28 @@ test.describe('08 — Transactions', () => {
     await flow.navigateToTransactions();
     await flow.assertTransactionListVisible();
     await flow.clickDownloadTransactions();
+    // Dialog offers CSV / PDF — the file itself is not downloaded here
+    await expect(flow['page'].getByText(/download your transactions history/i)).toBeVisible();
+    await expect(flow['page'].locator('#download-transactions #CSV, #download-transactions #PDF').first()).toBeVisible();
   });
 
-  // Progress indicator
-  test('TX-18 @regression — progress indicator visible on completed transaction', async () => {
+  // Transaction status on the details page (Jam d401dd0a)
+  test('TX-18 @regression — transaction details show the transaction status', async ({ page }) => {
     await flow.loginForFlow(ENV.TX_HISTORY_EMAIL, ENV.USER_PASSWORD);
     await flow.navigateToTransactions();
     await flow.assertTransactionListVisible();
-    const progress = flow['page']
-      .locator('[class*="progress"], [class*="step"], [class*="Progress"]')
-      .first();
-    await expect(progress).toBeVisible({ timeout: 10_000 });
+    const first = flow.rows().first();
+    await expect(first).toBeVisible({ timeout: 30_000 });
+    const listStatus = ((await first.innerText())
+      .match(/in progress|completed|cancelled|pending|failed|scheduled|expired|on hold|refunded/i) ?? [''])[0];
+    await first.click();
+    await page.waitForURL(/\/transactions\/details/, { timeout: 30_000 });
+    // Details card differs per type (money transfer / currency exchange / balance…) but all show
+    // "Transaction status <value>" — e.g. live DOM: "Transaction status Cancelled".
+    await expect(page.getByRole('heading', { name: 'Transaction details', level: 1 })).toBeVisible({ timeout: 45_000 });
+    await expect(page.getByText('Transaction status', { exact: true }).first()).toBeVisible({ timeout: 45_000 });
+    const main = page.locator('body');
+    await expect(main).toContainText(
+      new RegExp(`Transaction status\\s*${listStatus || '[A-Za-z ]+'}`, 'i'), { timeout: 15_000 });
   });
 });

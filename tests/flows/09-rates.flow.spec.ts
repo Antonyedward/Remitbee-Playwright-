@@ -20,7 +20,7 @@ test.describe('09 — Rates', () => {
   test('RC-02 @smoke @regression — converter frame loads for Ghana (GHS)', async () => {
     await flow.loginForFlow(ENV.RATES_EMAIL, ENV.USER_PASSWORD);
     await flow.navigateToRates();
-    await flow.selectCountry('ghs');
+    await flow.selectCountry('ghana', 'GHS');
     await flow.assertRatesTableVisible();
   });
 
@@ -28,7 +28,7 @@ test.describe('09 — Rates', () => {
   test('RC-03 @regression — converter frame for Brazil (BRL)', async () => {
     await flow.loginForFlow(ENV.RATES_EMAIL, ENV.USER_PASSWORD);
     await flow.navigateToRates();
-    await flow.selectCountry('braz');
+    await flow.selectCountry('brazil', 'BRL');
     await flow.assertRatesTableVisible();
   });
 
@@ -36,7 +36,7 @@ test.describe('09 — Rates', () => {
   test('RC-04 @regression — converter frame for Pakistan (PKR)', async () => {
     await flow.loginForFlow(ENV.RATES_EMAIL, ENV.USER_PASSWORD);
     await flow.navigateToRates();
-    await flow.selectCountry('pak');
+    await flow.selectCountry('pakistan', 'PKR');
     await flow.assertRatesTableVisible();
   });
 
@@ -44,7 +44,7 @@ test.describe('09 — Rates', () => {
   test('RC-05 @regression — converter frame for Philippines (PHP)', async () => {
     await flow.loginForFlow(ENV.RATES_EMAIL, ENV.USER_PASSWORD);
     await flow.navigateToRates();
-    await flow.selectCountry('php');
+    await flow.selectCountry('philippines', 'PHP');
     await flow.assertRatesTableVisible();
   });
 
@@ -52,7 +52,7 @@ test.describe('09 — Rates', () => {
   test('RC-06 @regression — converter frame for Sri Lanka (LKR)', async () => {
     await flow.loginForFlow(ENV.RATES_EMAIL, ENV.USER_PASSWORD);
     await flow.navigateToRates();
-    await flow.selectCountry('lkr');
+    await flow.selectCountry('sri lanka', 'LKR');
     await flow.assertRatesTableVisible();
   });
 
@@ -62,6 +62,11 @@ test.describe('09 — Rates', () => {
     await flow.navigateToRates();
     await flow.enterAmount('100');
     await flow.assertRatesTableVisible();
+    // They receive ≈ 100 × rate (heading rate is rounded to 2 dp → allow 1%)
+    const { rate } = await flow.getRate();
+    await expect.poll(async () => RatesFlow.toNumber(await flow.receiveInput().inputValue()), { timeout: 20_000 })
+      .toBeGreaterThan(100 * rate * 0.99);
+    expect(RatesFlow.toNumber(await flow.receiveInput().inputValue())).toBeLessThan(100 * rate * 1.01);
   });
 
   // RC-08/RC-09/RC-11 — Country search in dropdown
@@ -69,7 +74,9 @@ test.describe('09 — Rates', () => {
     await flow.loginForFlow(ENV.RATES_EMAIL, ENV.USER_PASSWORD);
     await flow.navigateToRates();
     await flow.searchCountry('Nigeria');
-    await flow.assertRatesTableVisible();
+    await expect(flow['page'].locator('li#NGN:visible').first()).toBeVisible({ timeout: 15_000 });
+    await expect(flow['page'].locator('li#NGN:visible').first()).toContainText(/Nigeria/i);
+    await flow.selectCountry('Nigeria', 'NGN');
   });
 
   // RC-13 — Favorite currencies
@@ -90,25 +97,22 @@ test.describe('09 — Rates', () => {
   test('RC-11 @regression — clicking send money from rates navigates to send money', async ({ page }) => {
     await flow.loginForFlow(ENV.RATES_EMAIL, ENV.USER_PASSWORD);
     await flow.navigateToRates();
-    const sendBtn = flow['page']
-      .locator('button:has-text("Send money"), a:has-text("Send money")')
-      .first();
-    const visible = await sendBtn.isVisible().catch(() => false);
-    if (visible) {
-      await sendBtn.click({ force: true });
-      await page.waitForURL(/send.?money/i, { timeout: 15_000 }).catch(() => {});
-    }
+    // Jam: #send-money → /money-transfer
+    await page.locator('#send-money').click();
+    await page.waitForURL(/\/money-transfer/, { timeout: 30_000 });
   });
 
   // Invalid amount
   test('RC-12 @regression — invalid amount in converter shows error', async () => {
     await flow.loginForFlow(ENV.RATES_EMAIL, ENV.USER_PASSWORD);
     await flow.navigateToRates();
-    await flow.enterAmount('a');
-    const error = flow['page']
-      .locator('[class*="error"]')
-      .first();
-    await expect(error).toBeVisible({ timeout: 5_000 });
+    // Below the $10 minimum → "Minimum sending amount is $10 CAD" (MoneyTransferRateDetails min10CADError)
+    await flow.enterAmount('5');
+    await flow.assertMinAmountError();
+    // Letters are not accepted by the amount field
+    await flow.sendInput().fill('');
+    await flow.sendInput().pressSequentially('abc');
+    await expect(flow.sendInput()).not.toHaveValue(/[a-z]/i);
   });
 
   // Invalid country
@@ -116,21 +120,22 @@ test.describe('09 — Rates', () => {
     await flow.loginForFlow(ENV.RATES_EMAIL, ENV.USER_PASSWORD);
     await flow.navigateToRates();
     await flow.searchCountry('cuba');
-    const noResult = flow['page']
-      .getByText(/no result|not found|unavailable/i)
-      .first();
-    await expect(noResult).toBeVisible({ timeout: 5_000 });
+    // No match → "Can't find your country? Request a new country …" (DropDownList not_found_country)
+    const notFound = flow['page'].locator('li#not_found_country:visible').first();
+    await expect(notFound).toBeVisible({ timeout: 15_000 });
+    await expect(notFound).toContainText(/can't find your country/i);
   });
 
   // Receiving amount
   test('RC-14 @regression — receiving amount field updates when send amount changes', async () => {
     await flow.loginForFlow(ENV.RATES_EMAIL, ENV.USER_PASSWORD);
     await flow.navigateToRates();
+    await flow.enterAmount('100');
+    await flow.assertRatesTableVisible();
+    const before = RatesFlow.toNumber(await flow.receiveInput().inputValue());
     await flow.enterAmount('1000');
-    const receiveAmount = flow['page']
-      .locator('[class*="receive"], [class*="amount"]')
-      .first();
-    await expect(receiveAmount).toBeVisible({ timeout: 10_000 });
+    await expect.poll(async () => RatesFlow.toNumber(await flow.receiveInput().inputValue()), { timeout: 20_000 })
+      .toBeGreaterThan(before * 9);
   });
 
   // Rates page URL

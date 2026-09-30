@@ -1,6 +1,15 @@
 import * as dotenv from 'dotenv';
 dotenv.config();
 
+/**
+ * One password for every staging test account (confirmed by QA, 2026-09-30).
+ * Override with COMMON_PASSWORD in .env if it ever changes. The per-account
+ * *_PASSWORD variables in .env are intentionally ignored so a stale value there
+ * (e.g. the old SEND_MONEY_DEBIT_PASSWORD=Business@123) can't break logins.
+ * INVALID_PASSWORD is NOT included — negative-login tests need a wrong password.
+ */
+const COMMON_PASSWORD = process.env.COMMON_PASSWORD || 'Test@1234567';
+
 export const ENV = {
   // ── Core ──────────────────────────────────────────────────────────────────
   BASE_URL: process.env.BASE_URL || 'https://www.cp.wisecapitals.com',
@@ -8,7 +17,7 @@ export const ENV = {
 
   // ── Personal account ──────────────────────────────────────────────────────
   PERSONAL_EMAIL: process.env.PERSONAL_EMAIL || 'remittest012@gmail.com',
-  USER_PASSWORD: process.env.USER_PASSWORD || 'Test@12345',
+  USER_PASSWORD: COMMON_PASSWORD,
   // ENTER_OTP: set to a 6-digit static OTP code (e.g. '121212') if OTP is disabled on test accounts,
   //            OR a Base32 TOTP secret (e.g. 'JBSWY3DPEHPK3PXP') if 2FA is enabled.
   //            If test accounts have 2FA disabled, this value is never used.
@@ -16,7 +25,7 @@ export const ENV = {
 
   // ── Business account ──────────────────────────────────────────────────────
   BUSINESS_EMAIL: process.env.BUSINESS_EMAIL || 'remittestbusinessbee@gmail.com',
-  BUSINESS_PASSWORD: process.env.BUSINESS_PASSWORD || 'Test@123',
+  BUSINESS_PASSWORD: COMMON_PASSWORD,
 
   // ── Edge-case accounts ────────────────────────────────────────────────────
   BLOCKED_EMAIL: process.env.BLOCKED_EMAIL || 'remittest-p09@gmail.com',
@@ -33,7 +42,7 @@ export const ENV = {
   SEND_MONEY_AMOUNT: process.env.SEND_MONEY_AMOUNT || '12',
   INITIATE_SEND_MONEY: process.env.INITIATE_SEND_MONEY || '1000',
   SEND_MONEY_DEBIT_EMAIL: process.env.SEND_MONEY_DEBIT_EMAIL || 'remittestj27.4@mail.com',
-  SEND_MONEY_DEBIT_PASSWORD: process.env.SEND_MONEY_DEBIT_PASSWORD || 'Business@123',
+  SEND_MONEY_DEBIT_PASSWORD: COMMON_PASSWORD,
   SEND_MONEY_WITHOUT_BALANCE_EMAIL: process.env.SEND_MONEY_WITHOUT_BALANCE_EMAIL || 'remittest-sendmoney@gmail.com',
 
   // ── Currency Exchange ─────────────────────────────────────────────────────
@@ -81,7 +90,7 @@ export const ENV = {
   DTONE_BILL_PAYMENT_MOBILE: process.env.DTONE_BILL_PAYMENT_MOBILE || '9876543210',
   DTONE_ESIM_COUNTRY: process.env.DTONE_ESIM_COUNTRY || 'can',
   DTONE_QR_EMAIL: process.env.DTONE_QR_EMAIL || 'remittest-k@gmail.com',
-  DTONE_QR_PASSWORD: process.env.DTONE_QR_PASSWORD || 'Orange@01',
+  DTONE_QR_PASSWORD: COMMON_PASSWORD,
   DTONE_CREDIT_CARD_1: process.env.DTONE_CREDIT_CARD_1 || '5548859910035010',
   DTONE_CARD_EXPIRE: process.env.DTONE_CARD_EXPIRE || '04/27',
   DTONE_CARD_CVV: process.env.DTONE_CARD_CVV || '123',

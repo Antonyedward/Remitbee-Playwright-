@@ -10,7 +10,10 @@ export class LoginFlow extends FlowBase {
   }
 
   async navigateToLogin(): Promise<void> {
-    await this.page.goto(ENV.BASE_URL + '/login');
+    // Use 'domcontentloaded' instead of the default 'load' so 3rd-party resources
+    // (reCAPTCHA, analytics iframes) can't stall the navigation and cause a 30s timeout.
+    // The login form is ready as soon as the DOM is parsed.
+    await this.page.goto(ENV.BASE_URL + '/login', { waitUntil: 'domcontentloaded', timeout: 30_000 });
     await this.dismissCookies();
   }
 
@@ -41,17 +44,21 @@ export class LoginFlow extends FlowBase {
     const otp = /^\d{6}$/.test(secret)
       ? secret                          // static 6-digit code — use as-is
       : authenticator.generate(secret); // Base32 TOTP secret — compute TOTP
-    const inputs = this.page.locator('input[maxlength="1"]');
-    await inputs.first().waitFor({ state: 'visible' });
+    // CP CodeVerificationInput renders id="code-1" through id="code-6"
+    await this.page.locator('#code-1').waitFor({ state: 'visible', timeout: 10_000 });
     for (let i = 0; i < otp.length; i++) {
-      await inputs.nth(i).fill(otp[i]);
+      const digitInput = this.page.locator(`#code-${i + 1}`);
+      await digitInput.fill(otp[i]);
+      await this.page.waitForTimeout(30); // brief pause for React state update
     }
   }
 
   async submitOTP(): Promise<void> {
-    const btn = this.page.locator('button[type="submit"], button:has-text("Verify")').first();
-    const visible = await btn.isVisible().catch(() => false);
-    if (visible) await btn.click();
+    // Login OTP: id="verify_code" (underscore) in VerificationCodeScreen.tsx
+    // Signup/2FA: id="verify-code" (dash) in 2FAVerification.tsx
+    const btn = this.page.locator('#verify_code, #verify-code').first();
+    const visible = await btn.waitFor({ state: 'visible', timeout: 10_000 }).then(() => true).catch(() => false);
+    if (visible) await btn.click({ force: true });
   }
 
   async assertDashboard(): Promise<void> {
@@ -120,9 +127,20 @@ export class LoginFlow extends FlowBase {
   }
 
   async logout(): Promise<void> {
-    // Direct URL logout is the most reliable method in CP
-    // ENV.LOGOUT_URL defaults to https://www.cp.wisecapitals.com/logout
-    await this.page.goto(ENV.LOGOUT_URL || `${ENV.BASE_URL}/logout`);
-    await this.page.waitForURL(/login/i, { timeout: 15_000 });
+    // Navigate to logout URL; CP may redirect to landing page or login depending on env.
+    // After any navigation settles, force-navigate to /login to ensure we end on the login page.
+    try {
+      await this.page.goto(ENV.LOGOUT_URL || `${ENV.BASE_URL}/logout`, {
+        waitUntil: 'domcontentloaded',
+        timeout: 15_000,
+      });
+    } catch {
+      // Navigation may time out on logout redirect chains — that's OK
+    }
+    // If we're not on login already, navigate there explicitly
+    if (!/\/login/.test(this.page.url())) {
+      await this.page.goto(`${ENV.BASE_URL}/login`, { waitUntil: 'domcontentloaded', timeout: 15_000 });
+    }
+    await this.page.waitForURL(/login/i, { timeout: 10_000 });
   }
 }

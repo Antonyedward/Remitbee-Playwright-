@@ -21,27 +21,84 @@ export class TransactionsFlow extends FlowBase {
     await expect(list).toBeVisible();
   }
 
-  async filterByStatus(status: string): Promise<void> {
-    // CP uses id="filters" for the Filter button (desktop)
-    const filterBtn = this.page.locator('#filters').first();
-    const found = await filterBtn.isVisible().catch(() => false);
-    if (found) {
-      await filterBtn.click({ force: true });
-    } else {
-      await this.page.locator('[class*="filter"], [class*="Filter"]').first().click({ force: true });
-    }
-    await this.page.getByText(status, { exact: false }).first().click();
-    // Apply the filter using id="applyFilters" (desktop) or id="apply-filters" (mobile)
-    const applyBtn = this.page.locator('#applyFilters, #apply-filters').first();
-    const applyVisible = await applyBtn.isVisible().catch(() => false);
-    if (applyVisible) await applyBtn.click({ force: true });
+  /** Transaction rows (TransactionList.tsx id="transaction-<id>"; day groups are "transaction-<date>-container"). */
+  rows() {
+    // Scoped to the list: the page heading is also id="transaction-history".
+    return this.page.locator('#transactions-container [id^="transaction-"]:not([id$="-container"]):visible');
   }
 
-  async filterByDateRange(from: string, to: string): Promise<void> {
-    const fromInput = this.page.locator('input[name*="from"], input[placeholder*="from" i]').first();
-    await fromInput.fill(from);
-    const toInput = this.page.locator('input[name*="to"], input[placeholder*="to" i]').first();
-    await toInput.fill(to);
+  noResults() {
+    // TransactionsWizard.tsx Splash: "No search results found"
+    return this.page.getByRole('heading', { name: /no search results found/i });
+  }
+
+  /**
+   * FiltersDialog.tsx: #filters opens the dialog; status is a multi-select DropDown
+   * (button#select-recipient → li[id="<label>"]); date chips #lastMonth #lastQuarter
+   * #lastSixMonths #lastYear; #applyFilters applies and closes.
+   */
+  async openFilters(): Promise<void> {
+    await this.page.locator('#filters').click();
+    await expect(this.page.locator('#filters-dialog-header')).toBeVisible({ timeout: 15_000 });
+  }
+
+  async applyFilters(): Promise<void> {
+    const apply = this.page.locator('#applyFilters');
+    await expect(apply).toBeEnabled({ timeout: 10_000 });
+    await apply.click();
+    await expect(this.page.locator('#filters-dialog-header')).toBeHidden({ timeout: 15_000 });
+    await expect(this.page.locator('#filters')).toHaveText(/Filters\s*\(\d+\)/, { timeout: 15_000 });
+    await this.waitForResults();
+  }
+
+  /** Wait until the list shows rows or the no-results splash (loading skeleton gone). */
+  async waitForResults(): Promise<void> {
+    await expect(this.rows().first().or(this.noResults())).toBeVisible({ timeout: 45_000 });
+  }
+
+  /**
+   * Jam 42edbdde: Filters → open the status dropdown → tick one or more statuses → Apply filters.
+   * URL becomes ?transaction_status=COMPLETED&transaction_status=... and the button reads "Filters (1)".
+   * Recipient AND status filters both use DropDown id="select-recipient" — pick the status one by its text.
+   */
+  async filterByStatuses(statuses: string[]): Promise<void> {
+    await this.openFilters();
+    const field = this.page.locator('button#select-recipient')
+      .filter({ hasText: /select transaction status|in progress|completed|cancelled|pending|failed|scheduled|expired/i });
+    for (const status of statuses) {
+      const option = this.page.locator(`li[id="${status}"]`);
+      await expect(async () => {
+        if (!(await option.isVisible().catch(() => false))) await field.click();
+        await option.click({ timeout: 5_000 });
+        await expect(field).toContainText(status, { timeout: 3_000 });
+      }).toPass({ timeout: 20_000, intervals: [500, 1_000] });
+    }
+    await this.page.locator('#filters-dialog-header').click(); // close the dropdown list
+    await this.applyFilters();
+  }
+
+  async filterByStatus(status: string): Promise<void> {
+    await this.filterByStatuses([status]);
+  }
+
+  /** Filters → "Clear all filters" (#clearFilters) — back to /transactions with no query. */
+  async clearAllFilters(): Promise<void> {
+    await this.openFilters();
+    await this.page.locator('#clearFilters').click();
+    await expect(this.page).toHaveURL(/\/transactions\/?$/, { timeout: 15_000 });
+    await expect(this.page.locator('#filters')).not.toHaveText(/\(\d+\)/, { timeout: 15_000 });
+  }
+
+  /** chip: 'lastMonth' | 'lastQuarter' | 'lastSixMonths' | 'lastYear' */
+  async filterByDateChip(chip: string): Promise<void> {
+    await this.openFilters();
+    await this.page.locator(`#${chip}`).click();
+    await this.applyFilters();
+  }
+
+  /** Kept for older callers — the date filter is now chip-based (Last month/quarter/6 months/year). */
+  async filterByDateRange(_from: string, _to: string): Promise<void> {
+    await this.filterByDateChip('lastYear');
   }
 
   async clickTransaction(index: number = 0): Promise<void> {
@@ -80,18 +137,15 @@ export class TransactionsFlow extends FlowBase {
   }
 
   async assertNoTransactions(): Promise<void> {
-    // CP uses id="error-no-results" when no transactions match the filter
-    const empty = this.page
-      .locator('#error-no-results')
-      .or(this.page.getByText(/no transactions|nothing here|empty/i))
-      .first();
-    await empty.waitFor({ state: 'visible', timeout: 10_000 });
-    await expect(empty).toBeVisible();
+    // Search/filter with no match → Splash "No search results found" + "Clear filters"
+    await expect(this.noResults()).toBeVisible({ timeout: 30_000 });
+    await expect(this.rows()).toHaveCount(0);
   }
 
+  /** SectionHeader.tsx button id="download" opens Dialog id="download-transactions" (CSV / PDF). */
   async clickDownloadTransactions(): Promise<void> {
-    // CP uses id="download-transactions" for the download button
-    await this.page.locator('#download-transactions').first().click({ force: true });
+    await this.page.locator('#download:visible').first().click();
+    await expect(this.page.locator('#download-transactions')).toBeVisible({ timeout: 15_000 });
   }
 
   async assertCancelledDialog(): Promise<void> {

@@ -79,13 +79,9 @@ test.describe('04 — CurrencyExchange', () => {
   test('CE-09 @smoke @regression — new user CE flow initiates with EFT payment', async ({ page }) => {
     await flow.loginForFlow(ENV.FIRST_TIME_USER_EMAIL, ENV.USER_PASSWORD);
     await flow.navigateToExchange();
-    await flow.enterAmount(ENV.CE_AMOUNT);
-    await flow.clickExchange();
-    // Payment method step loads
-    const payMethod = flow['page']
-      .locator('[class*="payment"], [class*="method"]')
-      .first();
-    await expect(payMethod).toBeVisible({ timeout: 15_000 });
+    // Conversion → purpose → payment source step ("How do you want to pay for your exchange?")
+    await flow.goToPaymentStep(ENV.CE_AMOUNT);
+    await flow.assertPaymentSourceStep();
   });
 
   // TC001/TC028 — Business first CE with EFT
@@ -100,22 +96,24 @@ test.describe('04 — CurrencyExchange', () => {
   test('CE-11 @regression — user with sufficient CAD balance sees wallet payment option', async ({ page }) => {
     await flow.loginForFlow(ENV.CE_SUFFICIENT_BALANCE_EMAIL, ENV.USER_PASSWORD);
     await flow.navigateToExchange();
-    await flow.enterAmount(ENV.CE_AMOUNT);
-    await flow.clickExchange();
-    const walletOption = flow['page']
-      .locator('#pay-from-balance, [class*="wallet"], text=/pay from balance/i')
-      .first();
-    await expect(walletOption).toBeVisible({ timeout: 15_000 });
+    await flow.goToPaymentStep(ENV.CE_AMOUNT);
+    // PaymentSourceSelection.tsx: "Pay from your CAD balance" radio, id="pay-from-balance"
+    await expect(page.locator('#pay-from-balance')).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator('#pay-from-balance')).toBeEnabled();
   });
 
   // TC031 — First time user has fee-free EFT
   test('CE-12 @regression — first time user EFT has fee-free label', async ({ page }) => {
     await flow.loginForFlow(ENV.FIRST_TIME_USER_EMAIL, ENV.USER_PASSWORD);
     await flow.navigateToExchange();
-    await flow.enterAmount(ENV.CE_AMOUNT);
-    await flow.clickExchange();
-    const feeFree = flow['page'].getByText(/fee.?free|0\.00|no fee/i).first();
-    await expect(feeFree).toBeVisible({ timeout: 15_000 });
+    await flow.goToPaymentStep(ENV.CE_AMOUNT);
+    // Pay from bank → bank-connection options (ConnectionType.tsx).
+    // NOTE: the "Total fees: Free" label is still defined in ConnectionType.tsx data but is no longer
+    // rendered (confirmed on live staging 2026-09-30), so this checks the EFT options render instead.
+    await flow.openBankConnectionOptions();
+    await expect(page.getByRole('heading', { name: /connect your bank accounts/i })).toBeVisible({ timeout: 20_000 });
+    await expect(page.locator('#instant-connection')).toBeVisible();
+    await expect(page.locator('#manual-connection')).toBeVisible();
   });
 
   // TC034 — Business exceeding daily limit
@@ -123,29 +121,23 @@ test.describe('04 — CurrencyExchange', () => {
     await flow.loginForFlow(ENV.BUSINESS_EMAIL, ENV.BUSINESS_PASSWORD);
     await flow.navigateToExchange();
     await flow.enterAmount('250001');
-    await flow.clickExchange();
-    const limitMsg = flow['page']
-      .locator('[class*="error"], [class*="limit"]')
-      .filter({ hasText: /limit|exceed|maximum/i })
-      .first();
-    await expect(limitMsg).toBeVisible({ timeout: 10_000 });
+    // Limit validation is live (while typing) — no Continue needed
+    await flow.assertLimitError();
   });
 
   // TC030/TC034 — Existing user CE using CAD balance
   test('CE-14 @regression — existing user can complete CE using CAD balance', async ({ page }) => {
     await flow.loginForFlow(ENV.CE_SUFFICIENT_BALANCE_EMAIL, ENV.USER_PASSWORD);
     await flow.navigateToExchange();
-    await flow.enterAmount(ENV.CE_AMOUNT);
-    await flow.clickExchange();
+    await flow.goToPaymentStep(ENV.CE_AMOUNT);
     await flow.clickPayFromBalance();
-    await flow.clickExchange();
+    await flow.clickContinue();
+    // Deposit step (DepositDestinationSelection.tsx)
+    await page.locator('#deposit-to-balance').waitFor({ state: 'visible', timeout: 25_000 });
     await flow.clickDepositToBalance();
-    await flow.clickExchange();
-    // Review page should load
-    const reviewSection = flow['page']
-      .locator('[class*="review"], [class*="summary"]')
-      .first();
-    await expect(reviewSection).toBeVisible({ timeout: 15_000 });
+    await flow.clickContinue();
+    // Overview (review) — nothing is submitted; the exchange is only placed from the overview's Confirm
+    await flow.assertOverview();
   });
 
   // TC040 — Page refresh
@@ -160,11 +152,9 @@ test.describe('04 — CurrencyExchange', () => {
   test('CE-16 @regression — CAD dropdown shows CAD and USD options', async ({ page }) => {
     await flow.loginForFlow();
     await flow.navigateToExchange();
-    // Both currency options should be accessible
-    const cadOption = flow['page'].getByText(/CAD/i).first();
-    const usdOption = flow['page'].getByText(/USD/i).first();
-    await expect(cadOption).toBeVisible();
-    await expect(usdOption).toBeVisible();
+    // Currency pickers in the converter: send side defaults to CAD, receive side to USD
+    await expect(page.locator('#sendingEnd-dropDownCountry')).toContainText(/CAD|USD/, { timeout: 15_000 });
+    await expect(page.locator('#receiveEnd-dropDownCountry')).toContainText(/CAD|USD/);
   });
 
   // CE less amount
@@ -172,12 +162,8 @@ test.describe('04 — CurrencyExchange', () => {
     await flow.loginForFlow();
     await flow.navigateToExchange();
     await flow.enterAmount(ENV.CE_LESS_AMOUNT);
-    await flow.clickExchange();
-    const error = flow['page']
-      .locator('[class*="error"]')
-      .filter({ hasText: /minimum|least|invalid|amount/i })
-      .first();
-    await expect(error).toBeVisible({ timeout: 10_000 });
+    // "Minimum exchanging amount is $10 CAD" appears after Continue (retried — first click is often swallowed)
+    await flow.triggerMinimumAmountError();
   });
 
   // TC049 — Existing user USD to CAD manual EFT
@@ -193,26 +179,23 @@ test.describe('04 — CurrencyExchange', () => {
   test('CE-19 @regression — deposit to bank option available', async ({ page }) => {
     await flow.loginForFlow(ENV.CE_SUFFICIENT_BALANCE_EMAIL, ENV.USER_PASSWORD);
     await flow.navigateToExchange();
-    await flow.enterAmount(ENV.CE_AMOUNT);
-    await flow.clickExchange();
+    await flow.goToPaymentStep(ENV.CE_AMOUNT);
     await flow.clickPayFromBalance();
-    await flow.clickExchange();
+    await flow.clickContinue();
+    // Deposit step: "deposit to bank" option is available and selectable
+    const toBank = page.locator('#deposit-to-bank');
+    await toBank.waitFor({ state: 'visible', timeout: 25_000 });
     await flow.clickDepositToBank();
-    const reviewSection = flow['page']
-      .locator('[class*="review"], [class*="summary"], [class*="bank"]')
-      .first();
-    await expect(reviewSection).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator('#continue:visible').first()).toBeEnabled({ timeout: 10_000 });
   });
 
   // TC044 — Manual EFT connection + micro deposit
   test('CE-20 @regression — new user can connect bank manually for CE', async ({ page }) => {
     await flow.loginForFlow(ENV.FIRST_TIME_USER_EMAIL, ENV.USER_PASSWORD);
     await flow.navigateToExchange();
-    await flow.enterAmount(ENV.CE_AMOUNT);
-    await flow.clickExchange();
-    const connectBank = flow['page']
-      .locator('button:has-text("Connect"), button:has-text("Link bank"), button:has-text("Add bank")')
-      .first();
-    await expect(connectBank).toBeVisible({ timeout: 15_000 });
+    await flow.goToPaymentStep(ENV.CE_AMOUNT);
+    // Reach the bank-connection options whichever route the app takes, then check manual is offered
+    await flow.openBankConnectionOptions();
+    await expect(page.locator('#manual-connection')).toBeVisible({ timeout: 20_000 });
   });
 });

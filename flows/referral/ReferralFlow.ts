@@ -14,15 +14,21 @@ export class ReferralFlow extends FlowBase {
   }
 
   async assertReferralCode(): Promise<void> {
-    const codeEl = this.page.locator('[class*="referral-code"], [class*="ReferralCode"]').first();
+    // CP uses id='your-personal-link-input' for the personal referral link input
+    const codeEl = this.page
+      .locator('#your-personal-link-input, [class*="referral-code"], [class*="ReferralCode"]')
+      .first();
     await codeEl.waitFor({ state: 'visible' });
     await expect(codeEl).toBeVisible();
-    const text = await codeEl.textContent();
-    expect(text?.trim().length).toBeGreaterThan(0);
+    const text = await codeEl.textContent() || await (codeEl as any).inputValue().catch(() => '');
+    expect((text?.trim() ?? '').length).toBeGreaterThan(0);
   }
 
   async copyReferralLink(): Promise<void> {
-    const copyBtn = this.page.locator('button:has-text("Copy"), button[aria-label*="copy" i]').first();
+    // CP uses id='copy-personal-link' for the copy link action in SendInvites.tsx
+    const copyBtn = this.page
+      .locator('#copy-personal-link, button:has-text("Copy"), button[aria-label*="copy" i]')
+      .first();
     await copyBtn.click({ force: true });
   }
 
@@ -55,14 +61,21 @@ export class ReferralFlow extends FlowBase {
   }
 
   async enterReferralCode(code: string): Promise<void> {
+    // CP uses id="promo-code-input" (PromoCodeDialog.tsx) for the code entry field
+    // and id='promo-code-apply' for the apply button.
+    // The promo-code dialog may need to be opened first via id="enter-promo-code".
+    const enterBtn = this.page.locator('#enter-promo-code');
+    const enterVisible = await enterBtn.isVisible().catch(() => false);
+    if (enterVisible) await enterBtn.click({ force: true });
+
     const input = this.page
-      .locator('input[name*="referral"], input[name*="promo"], input[placeholder*="code" i]')
+      .locator('#promo-code-input, input[name*="referral"], input[name*="promo"], input[placeholder*="code" i]')
       .first();
     const visible = await input.isVisible().catch(() => false);
     if (visible) {
       await input.fill(code);
       const applyBtn = this.page
-        .locator('button:has-text("Apply"), button:has-text("Submit")')
+        .locator('#promo-code-apply, button:has-text("Apply"), button:has-text("Submit")')
         .first();
       await applyBtn.click({ force: true });
     }

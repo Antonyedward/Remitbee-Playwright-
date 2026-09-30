@@ -3,6 +3,8 @@
   "version": "1.0.0",
   "description": "Remitbee / WiseCapitals Playwright automation suite",
   "scripts": {
+    "flow:setup": "cross-env NODE_OPTIONS=--max-old-space-size=1024 npx playwright test --config=playwright.flow.config.ts --project=setup",
+    "flow:setup-business": "cross-env NODE_OPTIONS=--max-old-space-size=1024 npx playwright test --config=playwright.flow.config.ts --project=setup --grep=\"business account\"",
     "test:flow": "cross-env NODE_OPTIONS=--max-old-space-size=1024 npx playwright test --config=playwright.flow.config.ts --project=flow-chromium",
     "flow:smoke": "cross-env NODE_OPTIONS=--max-old-space-size=1024 npx playwright test --config=playwright.flow.config.ts --project=flow-chromium --grep @smoke",
     "flow:regression": "cross-env NODE_OPTIONS=--max-old-space-size=1024 npx playwright test --config=playwright.flow.config.ts --project=flow-chromium --grep @regression",

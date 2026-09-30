@@ -169,17 +169,10 @@ export class SignupFlow extends FlowBase {
    * Fill each digit into the inputs in order.
    */
   async fillOTPCode(code: string): Promise<void> {
-    // CodeVerificationInput renders as input elements inside the container
-    const inputs = this.page.locator('input').filter({ hasText: '' });
-    // Safer: type the whole code into the first input (many OTP libs handle spreading)
-    const firstInput = this.page.locator('[class*="CodeVerification"] input, [class*="code-verification"] input, input[maxlength="1"]').first();
-    await firstInput.waitFor({ state: 'visible', timeout: 15_000 });
-    await firstInput.fill(code[0]);
-    // Fill remaining digits
-    const allOtp = this.page.locator('input[maxlength="1"]');
-    const count = await allOtp.count();
-    for (let i = 1; i < Math.min(code.length, count); i++) {
-      await allOtp.nth(i).fill(code[i]);
+    // CodeVerificationInput renders individual inputs with id="code-1" … id="code-6"
+    await this.page.locator('#code-1').waitFor({ state: 'visible', timeout: 15_000 });
+    for (let i = 0; i < Math.min(code.length, 6); i++) {
+      await this.page.locator(`#code-${i + 1}`).fill(code[i]);
     }
   }
 

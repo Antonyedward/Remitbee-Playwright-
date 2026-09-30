@@ -14,6 +14,10 @@ import { test, expect } from '@playwright/test';
 import { RecipientsFlow } from '../../flows/recipients/RecipientsFlow';
 
 test.describe('06 — Recipients', () => {
+  // Staging's customer/recipient APIs were seen taking ~37s (RC-21 trace, 2026-09-30); login + a slow
+  // recipient list can exceed the default 90s test timeout, so give this module more headroom.
+  test.describe.configure({ timeout: 150_000 });
+
   let flow: RecipientsFlow;
 
   test.beforeEach(async ({ page }) => {
@@ -45,14 +49,17 @@ test.describe('06 — Recipients', () => {
     await flow.navigateToRecipients();
     await flow.clickAddNewRecipient();
     await flow.assertAddCountryStep();
-    await expect(flow['page'].locator('#send-money-country-selection')).toBeVisible();
+    await expect(flow['page'].locator('button#send-money-country-selection')).toBeVisible();
   });
 
   test('RC-05 @regression — add-country step has send-money-currency-selection dropdown', async () => {
     await flow.navigateToRecipients();
     await flow.clickAddNewRecipient();
     await flow.assertAddCountryStep();
-    await expect(flow['page'].locator('#send-money-currency-selection')).toBeVisible();
+    // The currency dropdown only renders once a country with >1 receiving currency is chosen
+    // (AddCountry.tsx: selectedCountry.currencies.length > 1)
+    await flow.selectFirstMultiCurrencyCountry();
+    await expect(flow['page'].locator('button#send-money-currency-selection')).toBeVisible({ timeout: 10_000 });
   });
 
   test('RC-06 @regression — add-country step has send-money-addCountry continue button', async () => {
@@ -98,7 +105,7 @@ test.describe('06 — Recipients', () => {
     await flow.selectRecipientCountry('India');
     await flow.clickCountryContinue();
     await flow.assertAddReceivingMethodStep();
-    await flow.selectReceivingMethod('Bank Transfer');
+    await flow.selectReceivingMethod('Bank deposit');
     await flow.clickReceivingMethodContinue();
     await flow.assertBeneficiaryFormStep();
   });
@@ -110,7 +117,7 @@ test.describe('06 — Recipients', () => {
     await flow.clickAddNewRecipient();
     await flow.selectRecipientCountry('India');
     await flow.clickCountryContinue();
-    await flow.selectReceivingMethod('Bank Transfer');
+    await flow.selectReceivingMethod('Bank deposit');
     await flow.clickReceivingMethodContinue();
     await flow.assertBeneficiaryFormStep();
     const personal = flow['page'].locator('#person-input');
@@ -123,7 +130,7 @@ test.describe('06 — Recipients', () => {
     await flow.clickAddNewRecipient();
     await flow.selectRecipientCountry('India');
     await flow.clickCountryContinue();
-    await flow.selectReceivingMethod('Bank Transfer');
+    await flow.selectReceivingMethod('Bank deposit');
     await flow.clickReceivingMethodContinue();
     await flow.assertBeneficiaryFormStep();
     await flow.selectPersonalRecipient();
@@ -135,7 +142,7 @@ test.describe('06 — Recipients', () => {
     await flow.clickAddNewRecipient();
     await flow.selectRecipientCountry('India');
     await flow.clickCountryContinue();
-    await flow.selectReceivingMethod('Bank Transfer');
+    await flow.selectReceivingMethod('Bank deposit');
     await flow.clickReceivingMethodContinue();
     await flow.assertBeneficiaryFormStep();
     await flow.selectPersonalRecipient();
@@ -147,7 +154,7 @@ test.describe('06 — Recipients', () => {
     await flow.clickAddNewRecipient();
     await flow.selectRecipientCountry('India');
     await flow.clickCountryContinue();
-    await flow.selectReceivingMethod('Bank Transfer');
+    await flow.selectReceivingMethod('Bank deposit');
     await flow.clickReceivingMethodContinue();
     await flow.assertBeneficiaryFormStep();
     await flow.selectPersonalRecipient();
@@ -160,7 +167,7 @@ test.describe('06 — Recipients', () => {
     await flow.clickAddNewRecipient();
     await flow.selectRecipientCountry('India');
     await flow.clickCountryContinue();
-    await flow.selectReceivingMethod('Bank Transfer');
+    await flow.selectReceivingMethod('Bank deposit');
     await flow.clickReceivingMethodContinue();
     await flow.assertBeneficiaryFormStep();
     await flow.selectPersonalRecipient();
@@ -174,7 +181,7 @@ test.describe('06 — Recipients', () => {
     await flow.clickAddNewRecipient();
     await flow.selectRecipientCountry('India');
     await flow.clickCountryContinue();
-    await flow.selectReceivingMethod('Bank Transfer');
+    await flow.selectReceivingMethod('Bank deposit');
     await flow.clickReceivingMethodContinue();
     await flow.assertBeneficiaryFormStep();
     const biz = flow['page'].locator('#business-label');
@@ -183,49 +190,52 @@ test.describe('06 — Recipients', () => {
     else test.skip(); // not all corridors show business option
   });
 
-  // ── FULL END-TO-END — India Bank Transfer ────────────────────────────────────
+  // ── FULL END-TO-END — India Bank deposit ────────────────────────────────────
 
   test('RC-17 @smoke @regression — add India bank-transfer recipient end-to-end', async () => {
-    const uniqueName = 'Playwright' + Date.now();
+    const uniqueName = RecipientsFlow.uniqueName('Playwright'); // letters only — digits are rejected
     await flow.addRecipientEndToEnd({
       country: 'India',
-      method: 'Bank Transfer',
+      method: 'Bank deposit',
       firstName: uniqueName,
       lastName: 'Test',
-      accountNumber: '1234567890',
+      accountNumber: RecipientsFlow.uniqueAccountNumber(),
+      ifsc: RecipientsFlow.DEFAULT_IFSC,
     });
     // After "Got it", should be back on /recipients list
     await expect(flow['page']).toHaveURL(/\/recipients(\?|$)/i, { timeout: 20_000 });
   });
 
   test('RC-18 @regression — success dialog shows recipient-added-dialog id', async () => {
-    const uniqueName = 'PW' + Date.now();
+    const uniqueName = RecipientsFlow.uniqueName('PW'); // letters only — digits are rejected
     await flow.navigateToRecipients();
     await flow.clickAddNewRecipient();
     await flow.selectRecipientCountry('India');
     await flow.clickCountryContinue();
-    await flow.selectReceivingMethod('Bank Transfer');
+    await flow.selectReceivingMethod('Bank deposit');
     await flow.clickReceivingMethodContinue();
     await flow.selectPersonalRecipient();
     await flow.fillFirstName(uniqueName);
     await flow.fillLastName('Auto');
-    await flow.fillAccountNumber('9876543210');
+    await flow.fillAccountNumber(RecipientsFlow.uniqueAccountNumber());
+    await flow.fillIFSC(RecipientsFlow.DEFAULT_IFSC); // India: IFSC is required
     await flow.clickBeneficiaryContinue();
     await flow.assertRecipientAddedDialog();
   });
 
   test('RC-19 @regression — dialog-button-primaryAction (Got it) dismisses success dialog', async () => {
-    const uniqueName = 'PW' + Date.now();
+    const uniqueName = RecipientsFlow.uniqueName('PW'); // letters only — digits are rejected
     await flow.navigateToRecipients();
     await flow.clickAddNewRecipient();
     await flow.selectRecipientCountry('India');
     await flow.clickCountryContinue();
-    await flow.selectReceivingMethod('Bank Transfer');
+    await flow.selectReceivingMethod('Bank deposit');
     await flow.clickReceivingMethodContinue();
     await flow.selectPersonalRecipient();
     await flow.fillFirstName(uniqueName);
     await flow.fillLastName('Auto');
-    await flow.fillAccountNumber('1112223334');
+    await flow.fillAccountNumber(RecipientsFlow.uniqueAccountNumber());
+    await flow.fillIFSC(RecipientsFlow.DEFAULT_IFSC); // India: IFSC is required
     await flow.clickBeneficiaryContinue();
     await flow.assertRecipientAddedDialog();
     await flow.clickGotIt();

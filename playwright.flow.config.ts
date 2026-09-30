@@ -1,7 +1,16 @@
 import { defineConfig, devices } from '@playwright/test';
 import * as dotenv from 'dotenv';
+import * as path from 'path';
+import * as fs from 'fs';
 
 dotenv.config();
+
+const AUTH_DIR = path.join(__dirname, 'playwright', '.auth');
+const PERSONAL_AUTH = path.join(AUTH_DIR, 'personal.json');
+
+// Only use storageState if the file already exists (i.e. flow:setup was run beforehand).
+// When the file is absent tests still run — OTP is required as normal.
+const storageState = fs.existsSync(PERSONAL_AUTH) ? PERSONAL_AUTH : undefined;
 
 export default defineConfig({
   testDir: './tests/flows',
@@ -11,13 +20,14 @@ export default defineConfig({
   fullyParallel: false,
   workers: 1,
   retries: 0,
+  outputDir: process.env.PW_OUTPUT_DIR || './test-results',
   reporter: [
     ['list'],
-    ['html', { outputFolder: 'playwright-report', open: 'never' }],
+    ['html', { outputFolder: process.env.PW_REPORT_DIR || 'playwright-report', open: 'never' }],
   ],
   use: {
     baseURL: process.env.BASE_URL || 'https://www.cp.wisecapitals.com',
-    headless: true,
+    headless: false,   // Always open a visible browser window
     viewport: { width: 1280, height: 800 },
     actionTimeout: 20_000,
     navigationTimeout: 30_000,
@@ -26,9 +36,26 @@ export default defineConfig({
     trace: 'retain-on-failure',
   },
   projects: [
+    // ── Auth setup — run ONCE manually before the first suite run ─────────────
+    {
+      name: 'setup',
+      testDir: './playwright',
+      testMatch: /auth\.setup\.ts/,
+      use: {
+        ...devices['Desktop Chrome'],
+        headless: false,
+      },
+    },
+
+    // ── Main test project ─────────────────────────────────────────────────────
+    // Always starts with a FRESH browser context (no storageState) so each test
+    // does a full login with email + password — no stale cookies, no redirect surprises.
     {
       name: 'flow-chromium',
-      use: { ...devices['Desktop Chrome'] },
+      use: {
+        ...devices['Desktop Chrome'],
+        // storageState intentionally omitted — always fresh browser, always full login
+      },
     },
   ],
 });
