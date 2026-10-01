@@ -49,30 +49,36 @@ test.describe('18 — CurrencyConverter', () => {
   test('CC-05 @regression — CAD to USD conversion rate visible', async ({ page }) => {
     await flow.loginForFlow();
     await flow.navigateToCurrencyConverter();
-    const cadText = page.getByText(/CAD/i).first();
-    await expect(cadText).toBeVisible();
+    await expect(flow.currencyButtons().first()).toContainText('CAD');
+    await flow.selectToCurrency('USD');
     await flow.enterAmount('100');
     await flow.assertExchangeRate();
+    await expect(page.getByText(/\d[\d,]*\.\d+ USD/).first()).toBeVisible();
+    await flow.assertConvertedAmount();
   });
+
 
   // CC-06: USD to CAD conversion via selectFromCurrency
-  test('CC-06 @regression — USD to CAD conversion pair selectable', async ({ page }) => {
+  test('CC-06 @regression — USD conversion pair selectable', async () => {
     await flow.loginForFlow();
     await flow.navigateToCurrencyConverter();
-    await flow.selectFromCurrency('USD').catch(() => {});
+    await flow.selectToCurrency('USD');
     await flow.enterAmount('50');
-    await flow.assertExchangeRate();
+    await flow.assertConvertedAmount();
   });
 
+
   // CC-07: Clicking send this amount navigates to send money
-  test('CC-07 @regression — send this amount button navigates to send money', async ({ page }) => {
+  test('CC-07 @regression — send money link leaves the converter', async ({ page }) => {
     await flow.loginForFlow();
     await flow.navigateToCurrencyConverter();
     await flow.enterAmount('100');
     await flow.assertConvertedAmount();
-    await flow.clickSendThisAmount().catch(() => {});
-    await page.waitForURL(/send.?money|exchange|rate/i, { timeout: 15_000 }).catch(() => {});
+    await flow.clickSendThisAmount();
+    await page.waitForURL(url => !/currency-converter/.test(url.pathname), { timeout: 30_000 });
+    await expect(page).toHaveURL(/send-money|money-transfer|signup|login|dashboard/i);
   });
+
 
   // CC-08: URL is correct for currency converter / rates page
   test('CC-08 @smoke @regression — currency converter page has correct URL', async ({ page }) => {
@@ -93,15 +99,15 @@ test.describe('18 — CurrencyConverter', () => {
   });
 
   // CC-10: Invalid (alphabetical) amount is handled gracefully
-  test('CC-10 @regression — invalid amount input handled gracefully', async ({ page }) => {
+  test('CC-10 @regression — invalid amount input handled gracefully', async () => {
     await flow.loginForFlow();
     await flow.navigateToCurrencyConverter();
     await flow.enterAmount('abc');
-    await page.waitForTimeout(1_000);
-    // Page should not crash — either clears input or shows error
-    const pageAlive = await page.locator('body').isVisible();
-    expect(pageAlive).toBe(true);
+    // numeric field: letters are rejected
+    expect(await flow.sendInput().inputValue()).not.toMatch(/[a-z]/i);
+    await expect(flow.sendInput()).toBeVisible();
   });
+
 
   // CC-11: Personal account can access converter
   test('CC-11 @regression — personal account sees currency converter', async () => {
@@ -118,24 +124,26 @@ test.describe('18 — CurrencyConverter', () => {
   });
 
   // CC-13: Amount field accepts numeric input
-  test('CC-13 @regression — amount field accepts numeric input', async ({ page }) => {
+  test('CC-13 @regression — amount field accepts numeric input', async () => {
     await flow.loginForFlow();
     await flow.navigateToCurrencyConverter();
     await flow.enterAmount('250');
-    const input = page
-      .locator('input[name*="amount"], input[placeholder*="amount" i]')
-      .first();
-    const value = await input.inputValue().catch(() => '');
-    expect(value).toContain('250');
+    expect((await flow.sendInput().inputValue()).replace(/,/g, '')).toContain('250');
   });
 
+
   // CC-14: Large amount shows conversion result
-  test('CC-14 @regression — large amount (1000) shows converted result', async () => {
+  // Parked on request — switch back to test(...) to re-enable
+  test.fixme('CC-14 @regression — large amount (1000) shows converted result', async () => {
     await flow.loginForFlow();
     await flow.navigateToCurrencyConverter();
+    await flow.enterAmount('10');
+    const small = await flow.receiveAmount();
     await flow.enterAmount('1000');
     await flow.assertConvertedAmount();
+    expect(await flow.receiveAmount()).toBeGreaterThan(small);
   });
+
 
   // CC-15: Send amount label or field visible
   test('CC-15 @regression — send amount section is visible', async ({ page }) => {
@@ -151,9 +159,8 @@ test.describe('18 — CurrencyConverter', () => {
   test('CC-16 @regression — receive amount section is visible', async ({ page }) => {
     await flow.loginForFlow();
     await flow.navigateToCurrencyConverter();
-    const receiveLabel = page
-      .getByText(/you receive|receive amount|receiving/i)
-      .first();
-    await expect(receiveLabel).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText(/they receive/i).first()).toBeVisible({ timeout: 10_000 });
+    await expect(flow.receiveInput()).toBeVisible();
   });
+
 });

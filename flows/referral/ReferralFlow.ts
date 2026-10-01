@@ -13,15 +13,13 @@ export class ReferralFlow extends FlowBase {
     await this.dismissAllOverlays();
   }
 
-  async assertReferralCode(): Promise<void> {
-    // CP uses id='your-personal-link-input' for the personal referral link input
-    const codeEl = this.page
-      .locator('#your-personal-link-input, [class*="referral-code"], [class*="ReferralCode"]')
-      .first();
-    await codeEl.waitFor({ state: 'visible' });
-    await expect(codeEl).toBeVisible();
-    const text = await codeEl.textContent() || await (codeEl as any).inputValue().catch(() => '');
-    expect((text?.trim() ?? '').length).toBeGreaterThan(0);
+  /** "Your invite link:" shows cp.wisecapitals.com/refer/<code> as plain text (no input any more). Returns the code. */
+  async assertReferralCode(): Promise<string> {
+    const link = this.page.getByText(/wisecapitals\.com\/refer\/\S+/i).first();
+    await expect(link).toBeVisible({ timeout: 20_000 });
+    const code = ((await link.innerText()).trim().split('/refer/')[1] ?? '').trim();
+    expect(code.length).toBeGreaterThan(0);
+    return code;
   }
 
   async copyReferralLink(): Promise<void> {

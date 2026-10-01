@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { ReferralFlow } from '../../flows/referral/ReferralFlow';
+import { RewardsFlow } from '../../flows/rewards/RewardsFlow';
 import { ENV } from '../../config/environments';
 
 test.describe('16 — Referral', () => {
@@ -38,11 +39,11 @@ test.describe('16 — Referral', () => {
   test('RV-04 @regression — invalid referral code shows error', async () => {
     await flow.loginForFlow(ENV.PERSONAL_EMAIL, ENV.USER_PASSWORD);
     await flow.navigateToReferral();
-    await flow.enterReferralCode('INVALIDCODE999');
-    const error = flow['page']
-      .getByText(/invalid|not valid|error|wrong/i)
-      .first();
-    await expect(error).toBeVisible({ timeout: 10_000 });
+    // Codes are entered via "Apply promo code" → #enter-promo-code dialog (same as module 10)
+    const res = await new RewardsFlow(flow['page']).applyPromoCode('INVALIDCODE999');
+    expect(res.success).toBe(false);
+    expect(res.message.length).toBeGreaterThan(0);
+    console.log(`[RV-04] invalid code message: ${res.message}`);
   });
 
   // RV-09 — $10 rewards balance check
@@ -59,7 +60,9 @@ test.describe('16 — Referral', () => {
   test('RV-06 @regression — valid referral code applied on signup shows reward', async () => {
     await flow.loginForFlow(ENV.REWARDS_EMAIL, ENV.USER_PASSWORD);
     await flow.navigateToReferral();
-    await flow.assertReferralCode();
+    const code = await flow.assertReferralCode();
+    // A new user signing up through this link lands on /refer/<code> — check the link carries the user's code
+    expect(code).toMatch(/^[\w.-]+$/);
   });
 
   // RV-05 — Referral without applying code

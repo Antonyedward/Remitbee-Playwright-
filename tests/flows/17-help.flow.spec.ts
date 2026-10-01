@@ -70,148 +70,91 @@ test.describe('17 — Help', () => {
   });
 
   // HP-07: Clicking a help category opens the category page
-  test('HP-07 @regression — clicking a help category navigates to category articles', async ({ page }) => {
+  // Parked on request: staging help categories show no article rows yet — switch back to test(...) to re-enable
+  test.fixme('HP-07 @regression — clicking a help category navigates to category articles', async ({ page }) => {
     await flow.loginForFlow();
-    await flow.navigateToHelp();
-    const categoryItem = page
-      .locator('[class*="help-categories-list"], [class*="rb-help-categories"]')
-      .first();
-    const visible = await categoryItem.isVisible().catch(() => false);
-    if (visible) {
-      await categoryItem.click({ force: true });
-      await page.waitForURL(/customer-help|help\//i, { timeout: 15_000 }).catch(() => {});
-    }
+    await flow.openFirstCategory();
+    await expect(page).toHaveURL(/customer-help\/[^/?]+$/);
+    await expect(flow.articleRows().first()).toBeVisible({ timeout: 20_000 });
   });
 
-  // HP-08: Article content visible after clicking into help
-  test('HP-08 @regression — help article content loads', async ({ page }) => {
+  // HP-08: Article page loads
+  // Parked on request: staging help categories show no article rows yet — switch back to test(...) to re-enable
+  test.fixme('HP-08 @regression — help article content loads', async ({ page }) => {
     await flow.loginForFlow();
-    await flow.navigateToHelp();
-    await flow.searchHelp('send money');
-    await page.waitForTimeout(1_500);
-    const article = page
-      .locator('[class*="article"], [class*="Article"], [class*="HelpArticle"]')
-      .first();
-    const visible = await article.isVisible().catch(() => false);
-    if (visible) {
-      await article.click({ force: true });
-      await page.waitForURL(/customer-help|article/i, { timeout: 15_000 }).catch(() => {});
-    }
+    await flow.openFirstArticle();
+    await expect(page).toHaveURL(/customer-help\/[^/]+\/[^/?]+/);
   });
 
-  // HP-09: Feedback buttons visible on article — ids from HelpRelatedArticles.tsx
-  test('HP-09 @regression — article feedback buttons "Yes" and "No" visible', async ({ page }) => {
+  // HP-09: Feedback buttons on the article (HelpRelatedArticles.tsx)
+  // Parked on request: staging help categories show no article rows yet — switch back to test(...) to re-enable
+  test.fixme('HP-09 @regression — article feedback buttons "Yes" and "No" visible', async ({ page }) => {
     await flow.loginForFlow();
-    await flow.navigateToHelp();
-    await flow.searchHelp('send money');
-    await page.waitForTimeout(1_500);
-    const article = page
-      .locator('[class*="article"], [class*="Article"]')
-      .first();
-    const clicked = await article.isVisible().catch(() => false);
-    if (clicked) {
-      await article.click({ force: true });
-      await page.waitForTimeout(2_000);
-      const yesBtn = page.locator('#yesResponseHelp');
-      const noBtn = page.locator('#noResponseHelp');
-      const yesVisible = await yesBtn.isVisible().catch(() => false);
-      if (yesVisible) {
-        await expect(yesBtn).toBeVisible();
-        await expect(noBtn).toBeVisible();
-      }
-    }
+    await flow.openFirstArticle();
+    await expect(page.locator('#yesResponseHelp')).toBeVisible();
+    await expect(page.locator('#noResponseHelp')).toBeVisible();
   });
 
-  // HP-10: Clicking "Was this helpful? Yes" opens feedback dialog
-  test('HP-10 @regression — clicking "Yes" feedback opens userResponseDialog', async ({ page }) => {
+  // HP-10: "Yes" records the feedback inline (no dialog for Yes)
+  // Parked on request: staging help categories show no article rows yet — switch back to test(...) to re-enable
+  test.fixme('HP-10 @regression — clicking "Yes" feedback shows thanks message', async ({ page }) => {
     await flow.loginForFlow();
-    await flow.navigateToHelp();
-    const yesBtn = page.locator('#yesResponseHelp');
-    const visible = await yesBtn.isVisible().catch(() => false);
-    if (visible) {
-      await yesBtn.click({ force: true });
-      const dialog = page.locator('#userResponseDialog');
-      await expect(dialog).toBeVisible({ timeout: 8_000 });
-    } else {
-      test.skip();
-    }
+    await flow.openFirstArticle();
+    await page.locator('#yesResponseHelp').click();
+    await expect(page.getByText(/thanks for your feedback/i).first()).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator('#yesResponseHelp')).toBeHidden();
   });
 
-  // HP-11: Clicking "No" feedback opens userResponseDialog
-  test('HP-11 @regression — clicking "No" feedback opens userResponseDialog', async ({ page }) => {
+  // HP-11: "No" opens the reason dialog
+  // Parked on request: staging help categories show no article rows yet — switch back to test(...) to re-enable
+  test.fixme('HP-11 @regression — clicking "No" feedback opens userResponseDialog', async ({ page }) => {
     await flow.loginForFlow();
-    await flow.navigateToHelp();
-    const noBtn = page.locator('#noResponseHelp');
-    const visible = await noBtn.isVisible().catch(() => false);
-    if (visible) {
-      await noBtn.click({ force: true });
-      const dialog = page.locator('#userResponseDialog');
-      await expect(dialog).toBeVisible({ timeout: 8_000 });
-    } else {
-      test.skip();
-    }
+    await flow.openFirstArticle();
+    await page.locator('#noResponseHelp').click();
+    await expect(page.locator('#userResponseDialog')).toBeVisible({ timeout: 10_000 });
   });
 
-  // HP-12: Submit feedback button visible in dialog
-  test('HP-12 @regression — feedback dialog has submit button', async ({ page }) => {
+  // HP-12: Feedback dialog submit button (disabled until a reason is chosen)
+  // Parked on request: staging help categories show no article rows yet — switch back to test(...) to re-enable
+  test.fixme('HP-12 @regression — feedback dialog has submit button', async ({ page }) => {
     await flow.loginForFlow();
-    await flow.navigateToHelp();
-    const yesBtn = page.locator('#yesResponseHelp');
-    const visible = await yesBtn.isVisible().catch(() => false);
-    if (visible) {
-      await yesBtn.click({ force: true });
-      const submitBtn = page.locator('#submitResponse');
-      await expect(submitBtn).toBeVisible({ timeout: 8_000 });
-    } else {
-      test.skip();
-    }
+    await flow.openFirstArticle();
+    await page.locator('#noResponseHelp').click();
+    const submit = page.locator('#submitResponse');
+    await expect(submit).toBeVisible({ timeout: 10_000 });
+    await expect(submit).toBeDisabled();
   });
 
-  // HP-13: Breadcrumb navigation visible on article pages
-  test('HP-13 @regression — breadcrumb navigation visible on help article', async ({ page }) => {
+  // HP-13: Breadcrumb "Help › <Category> › …" on the article page
+  // Parked on request: staging help categories show no article rows yet — switch back to test(...) to re-enable
+  test.fixme('HP-13 @regression — breadcrumb navigation visible on help article', async ({ page }) => {
     await flow.loginForFlow();
-    await flow.navigateToHelp();
-    await flow.searchHelp('send money');
-    await page.waitForTimeout(1_500);
-    const article = page.locator('[class*="Article"], [class*="article"]').first();
-    const articleVisible = await article.isVisible().catch(() => false);
-    if (!articleVisible) {
-      test.skip(true, 'No help article found in search results — skipping breadcrumb check');
-    }
-    await article.click({ force: true });
-    await page.waitForURL(/article|help/i, { timeout: 10_000 }).catch(() => {});
-    const breadcrumb = page.locator('[class*="breadcrumb"], [class*="BreadCrumb"]').first();
-    await expect(breadcrumb).toBeVisible({ timeout: 8_000 });
+    await flow.openFirstArticle();
+    const helpCrumb = page.getByText(/^help$/i).first();
+    await expect(helpCrumb).toBeVisible();
+    await helpCrumb.click();
+    await page.waitForURL(/customer-help\/?$/, { timeout: 20_000 });
   });
 
-  // HP-14: Related articles visible on article page
-  test('HP-14 @regression — related articles section visible on article page', async ({ page }) => {
+  // HP-14: Related articles list on the article page
+  // Parked on request: staging help categories show no article rows yet — switch back to test(...) to re-enable
+  test.fixme('HP-14 @regression — related articles section visible on article page', async ({ page }) => {
     await flow.loginForFlow();
-    await flow.navigateToHelp();
-    await flow.searchHelp('send money');
-    await page.waitForTimeout(1_500);
-    const article = page.locator('[class*="Article"], [class*="article"]').first();
-    const articleVisible = await article.isVisible().catch(() => false);
-    if (!articleVisible) {
-      test.skip(true, 'No help article found in search results — skipping related articles check');
-    }
-    await article.click({ force: true });
-    await page.waitForURL(/article|help/i, { timeout: 10_000 }).catch(() => {});
-    const related = page.locator('[class*="related"], [class*="Related"]').first();
-    await expect(related).toBeVisible({ timeout: 8_000 });
+    await flow.openFirstArticle();
+    await expect(page.getByText(/browse related articles/i).first()).toBeVisible();
+    expect(await flow.articleRows().count()).toBeGreaterThan(0);
   });
 
-  // HP-15: Contact support option visible
+  // HP-15: "Need more help? Contact us" (MoreHelp.tsx) → contact page
   test('HP-15 @regression — contact support option visible on help page', async ({ page }) => {
     await flow.loginForFlow();
     await flow.navigateToHelp();
-    const contact = page
-      .locator('button:has-text("Contact"), a:has-text("Contact us"), button:has-text("Chat"), a:has-text("Chat")')
-      .first();
-    await expect(contact).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText(/need more help\?/i).first()).toBeVisible({ timeout: 20_000 });
+    await expect(flow.contactUsLink()).toBeVisible();
+    await flow.contactUsLink().click();
+    await page.waitForURL(/customer-help\/contact-us/, { timeout: 20_000 });
   });
 
-  // HP-16: Help page URL is correct
   test('HP-16 @smoke @regression — help page has correct URL', async ({ page }) => {
     await flow.loginForFlow();
     await flow.navigateToHelp();

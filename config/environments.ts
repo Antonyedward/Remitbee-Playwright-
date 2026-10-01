@@ -86,7 +86,9 @@ export const ENV = {
   // ── DTone ─────────────────────────────────────────────────────────────────
   DTONE_MOBILE_PHONE: process.env.DTONE_MOBILE_PHONE || '7067491101',
   DTONE_SUCCESS_COUNTRY: process.env.DTONE_SUCCESS_COUNTRY || 'Nigeria',
-  DTONE_BILL_PAYMENT_COUNTRY: process.env.DTONE_BILL_PAYMENT_COUNTRY || 'Ghana',
+  DTONE_BILL_PAYMENT_COUNTRY: process.env.DTONE_BILL_PAYMENT_COUNTRY || 'India',   // staging bills: India only (Jam 21b71844)
+  DTONE_BILL_UTILITY: process.env.DTONE_BILL_UTILITY || 'VOIP',
+  DTONE_GIFT_CARD_COUNTRY: process.env.DTONE_GIFT_CARD_COUNTRY || 'India',     // staging gift cards: India / United States only
   DTONE_BILL_PAYMENT_MOBILE: process.env.DTONE_BILL_PAYMENT_MOBILE || '9876543210',
   DTONE_ESIM_COUNTRY: process.env.DTONE_ESIM_COUNTRY || 'can',
   DTONE_QR_EMAIL: process.env.DTONE_QR_EMAIL || 'remittest-k@gmail.com',

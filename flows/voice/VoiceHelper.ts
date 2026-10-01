@@ -180,11 +180,23 @@ export class VoiceHelper {
       throw new Error(`[VoiceHelper] Command was ignored — Jev did not recognise it as a browser instruction: "${command}"`);
     } else if (decision === 'disambiguate') {
       // Multiple candidate elements — pick the first one automatically in test context.
-      const candidates = policy.candidates as Array<{ id: string; label: string }>;
-      console.warn(`[VoiceHelper] Ambiguous target for "${command}". Auto-picking first: ${JSON.stringify(candidates[0])}`);
-      if (candidates?.length > 0) {
-        const autoAction = { ...(policy.action as Record<string, unknown>), targetId: candidates[0].id };
-        await this._execute(autoAction, this._browser);
+      // Multiple candidate elements — pick the one whose label best matches the command words
+      // (Jev's first guess can be wrong, e.g. "Our fees" for "open the rates page").
+      const candidates = (policy.candidates as Array<{ id: string; label: string; p?: number }>) ?? [];
+      if (candidates.length > 0) {
+        const STOP = new Set(['go', 'to', 'the', 'open', 'page', 'click', 'on', 'a', 'an', 'please', 'show', 'me']);
+        const words = command.toLowerCase().split(/[^a-z0-9]+/).filter(w => w && !STOP.has(w));
+        const score = (c: { label: string; p?: number }) => {
+          const label = (c.label || '').toLowerCase();
+          return words.filter(w => label.includes(w)).length * 10 + (c.p ?? 0);
+        };
+        const best = [...candidates].sort((a, b) => score(b) - score(a))[0];
+        console.warn(`[VoiceHelper] Ambiguous target for "${command}". Picking: ${JSON.stringify(best)}`);
+        // policy.action is undefined for a disambiguation — build a click on the chosen element
+        const base = (policy.action as Record<string, unknown> | undefined) ?? {};
+        const autoAction = { type: 'click_element', ...base, targetId: best.id, label: best.label };
+        const res = await this._execute(autoAction, this._browser) as { ok: boolean; detail?: string };
+        if (!res?.ok) throw new Error(`[VoiceHelper] Command "${command}" (auto-picked ${best.label}) failed: ${res?.detail}`);
       }
     } else {
       console.warn(`[VoiceHelper] Unexpected policy decision "${decision}" for: "${command}"`);

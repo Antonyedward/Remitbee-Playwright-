@@ -86,19 +86,21 @@ export class LoginFlow extends FlowBase {
   }
 
   async fillForgotPasswordEmail(email: string): Promise<void> {
-    const input = this.page.locator('input[type="email"], input[name="email"]').first();
+    // ForgotPassword.tsx: <Input id='email'> (type text, prefilled from the login step)
+    const input = this.page.locator('input#email:visible').first();
     await input.waitFor({ state: 'visible' });
     await input.fill(email);
   }
 
   async submitForgotPassword(): Promise<void> {
-    await this.page.locator('button[type="submit"]').first().click();
+    // "Send reset link" = #send_reset_link ("Back to login" is the type=submit button)
+    await this.page.locator('#send_reset_link:visible').first().click();
   }
 
   async assertResetEmailSent(): Promise<void> {
     const confirmation = this.page
       .locator('[class*="success"], [class*="Success"]')
-      .or(this.page.getByText(/email sent|check your email|reset link/i))
+      .or(this.page.getByText(/check your email|we sent a link to|email sent/i))
       .first();
     await confirmation.waitFor({ state: 'visible', timeout: 15_000 });
   }

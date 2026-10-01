@@ -21,6 +21,14 @@ export class FlowBase {
       await this.page.waitForTimeout(5_000);
       await this.page.goto(ENV.BASE_URL + '/login', { waitUntil: 'domcontentloaded', timeout: 30_000 });
     }
+    // Staging gateway hiccup (seen live): plain-text "upstream connect error … connection termination"
+    // instead of the app. Reload up to twice before giving up.
+    for (let i = 0; i < 2; i++) {
+      const body = (await this.page.locator('body').innerText({ timeout: 5_000 }).catch(() => '')) || '';
+      if (!/upstream connect error|no healthy upstream|502 Bad Gateway|503 Service/i.test(body)) break;
+      await this.page.waitForTimeout(5_000);
+      await this.page.goto(ENV.BASE_URL + '/login', { waitUntil: 'domcontentloaded', timeout: 30_000 });
+    }
 
     // If the context has a valid device-trust cookie (set by auth.setup.ts), the server
     // redirects /login to /dashboard immediately (no form shown at all). But the redirect

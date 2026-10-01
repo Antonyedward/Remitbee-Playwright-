@@ -25,29 +25,65 @@ export class RewardsFlow extends FlowBase {
     await expect(tiers).toBeVisible();
   }
 
-  async enterPromoCode(code: string): Promise<void> {
-    // CP uses id="enter-promo-code" to toggle the promo code input
-    const toggleBtn = this.page.locator('#enter-promo-code').first();
-    const isVisible = await toggleBtn.isVisible().catch(() => false);
-    if (isVisible) await toggleBtn.click({ force: true });
-    // Then fill id="promo-code-input"
-    const input = this.page.locator('#promo-code-input').first();
-    await input.waitFor({ state: 'visible' });
-    await input.fill(code);
+  /**
+   * Promo code (RewardsBalance.tsx → ApplyPromoDialog.tsx):
+   *   "Apply promo code" link under the balance → Dialog id="enter-promo-code" → Input #promo-code-input
+   *   → "Apply" (#dialog-button-primaryAction). The dialog closes immediately; the result is either
+   *   the success dialog #rewards-dialog (RewardsAnimation) or promoCodeError, which is shown as
+   *   #promo-code-input-error-text the next time the dialog is opened.
+   */
+  async openPromoDialog(): Promise<void> {
+    const dialog = this.page.locator('#enter-promo-code');
+    if (await dialog.isVisible().catch(() => false)) return;
+    await this.page.getByText('Apply promo code', { exact: true }).first().click();
+    await expect(dialog).toBeVisible({ timeout: 15_000 });
   }
 
+  async enterPromoCode(code: string): Promise<void> {
+    await this.openPromoDialog();
+    await this.page.locator('#promo-code-input').fill(code);
+  }
+
+  /** Apply and return { success, message } — message is the error text when not successful. */
+  async applyPromoCode(code: string): Promise<{ success: boolean; message: string }> {
+    await this.enterPromoCode(code);
+    await this.page.locator('#enter-promo-code #dialog-button-primaryAction').click();
+    const successDialog = this.page.locator('#rewards-dialog');
+    // Wait for the redeem call to finish (success dialog, or the loader gone)
+    await successDialog.waitFor({ state: 'visible', timeout: 15_000 }).catch(() => {});
+    if (await successDialog.isVisible().catch(() => false)) {
+      const message = (await successDialog.innerText()).trim();
+      await successDialog.locator('#dialog-button-primaryAction').click().catch(() => {});
+      return { success: true, message };
+    }
+    const snack = this.page.locator('[id^="snackbar-"]').first();
+    if (await snack.isVisible().catch(() => false)) {
+      return { success: false, message: (await snack.innerText()).trim() };
+    }
+    // Error is kept in state and rendered under the input when the dialog is reopened
+    await this.openPromoDialog();
+    const err = this.page.locator('#promo-code-input-error-text');
+    await expect(err).toBeVisible({ timeout: 15_000 });
+    return { success: false, message: (await err.innerText()).trim() };
+  }
+
+  /** "Share link" (#your-personal-link-share) → Dialog #share-dialog with #copy-link and #send-email. */
   async clickInviteFriends(): Promise<void> {
-    // CP uses id="invites-friends-button" for the referral/share button
-    await this.page.locator('#invites-friends-button').first().click({ force: true });
+    await this.page.locator('#your-personal-link-share:visible').first().click();
+    await expect(this.page.locator('#share-dialog')).toBeVisible({ timeout: 15_000 });
   }
 
   async assertShareDialog(): Promise<void> {
-    // CP shows id="share-dialog" with id="your-personal-link-input" and id="copy-personal-link"
-    await expect(this.page.locator('#share-dialog').first()).toBeVisible({ timeout: 10_000 });
+    const dialog = this.page.locator('#share-dialog');
+    await expect(dialog).toBeVisible({ timeout: 10_000 });
+    await expect(dialog.locator('#copy-link')).toBeVisible();
+    await expect(dialog.locator('#send-email')).toBeVisible();
   }
 
   async copyPersonalLink(): Promise<void> {
-    await this.page.locator('#copy-personal-link').first().click({ force: true });
+    const copy = this.page.locator('#copy-personal-link:visible').first();
+    await copy.click();
+    await expect(copy).toContainText(/copied/i, { timeout: 10_000 });
   }
 
   async redeemRewards(amount: string): Promise<void> {

@@ -30,6 +30,10 @@ export function collectElementsInPage() {
     "[role=textbox]",
     "[contenteditable=true]",
     "[onclick]",
+    // Remitbee CP: sidebar items are <li id="menu-..."> and user-menu rows are divs with React onClick
+    // (no href / role), so they are invisible to the default selector list.
+    'li[id^="menu-"]',
+    '[id^="user-menu-"]:not(#user-menu-dropdown)',
   ].join(",");
 
   const win = window;
@@ -78,6 +82,7 @@ export function collectElementsInPage() {
         else if (type === "radio") role = "radio";
         else role = "textbox";
       } else if (el.isContentEditable) role = "textbox";
+      else if (tag === "li" && (el.id || "").startsWith("menu-")) role = "link";
       else role = "clickable";
     }
 

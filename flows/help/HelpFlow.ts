@@ -1,5 +1,6 @@
 import { Page, expect } from '@playwright/test';
 import { FlowBase } from '../FlowBase';
+import { ENV } from '../../config/environments';
 
 export class HelpFlow extends FlowBase {
   constructor(page: Page) {
@@ -58,4 +59,46 @@ export class HelpFlow extends FlowBase {
     await expanded.waitFor({ state: 'visible', timeout: 5_000 });
     await expect(expanded).toBeVisible();
   }
+
+  // ── Live DOM (CP src/components/help/*, pages/customer-help/**) ─────────────
+  // /customer-help: category cards [class*="rb-help-categories-card"] → /customer-help/<category>
+  // category page: article rows [class*="rb-help-related-box"] → /customer-help/<category>/<article>
+  // article page: breadcrumb "Help › <Category> › …", "Was this article helpful?" #yesResponseHelp/#noResponseHelp,
+  //   Yes → "Thanks for your feedback!", No → #userResponseDialog with #submitResponse (disabled until a reason is picked),
+  //   "Browse related articles" list. Footer: "Need more help?  Contact us" → /customer-help/contact-us.
+
+  categoryCards() {
+    return this.page.locator('[class*="rb-help-categories-card"]:visible');
+  }
+
+  articleRows() {
+    return this.page.locator('[class*="rb-help-related-box"]:visible');
+  }
+
+  async openFirstCategory(): Promise<string> {
+    await this.page.goto(`${ENV.BASE_URL}/customer-help`, { waitUntil: 'domcontentloaded' });
+    await this.dismissAllOverlays();
+    await expect(this.categoryCards().first()).toBeVisible({ timeout: 30_000 });
+    const name = (await this.categoryCards().first().innerText()).split('\n')[0].trim();
+    await expect(async () => {
+      if (/customer-help\/?$/.test(new URL(this.page.url()).pathname)) await this.categoryCards().first().click();
+      await this.page.waitForURL(/customer-help\/[^/?]+$/, { timeout: 8_000 });
+    }).toPass({ timeout: 40_000 });
+    return name;
+  }
+
+  async openFirstArticle(): Promise<void> {
+    await this.openFirstCategory();
+    await expect(this.articleRows().first()).toBeVisible({ timeout: 30_000 });
+    await expect(async () => {
+      if (!/customer-help\/[^/]+\/[^/?]+/.test(this.page.url())) await this.articleRows().first().click();
+      await this.page.waitForURL(/customer-help\/[^/]+\/[^/?]+/, { timeout: 8_000 });
+    }).toPass({ timeout: 40_000 });
+    await expect(this.page.getByText(/was this article helpful\?/i).first()).toBeVisible({ timeout: 30_000 });
+  }
+
+  contactUsLink() {
+    return this.page.getByText(/^contact us$/i).first();
+  }
+
 }

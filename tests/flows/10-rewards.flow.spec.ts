@@ -14,8 +14,9 @@ test.describe('10 — Rewards', () => {
     await flow.loginForFlow(ENV.REWARDS_EMAIL, ENV.USER_PASSWORD);
     await flow.navigateToRewards();
     await flow.assertRewardsBalance();
-    await flow.enterPromoCode(ENV.PROMO_CODE);
-    // Success or already used — both valid for test env
+    // Staging codes are single-use per account: first run → success dialog, later runs → "already used"
+    const res = await flow.applyPromoCode(ENV.PROMO_CODE);
+    expect(res.message).not.toBe('');
   });
 
   // TC-01 — Apply promo code (business)
@@ -29,24 +30,24 @@ test.describe('10 — Rewards', () => {
   test('RW-03 @regression — already used promo code shows appropriate message', async () => {
     await flow.loginForFlow(ENV.REWARDS_EMAIL, ENV.USER_PASSWORD);
     await flow.navigateToRewards();
-    await flow.enterPromoCode(ENV.PROMO_CODE);
-    // Apply again to see "already used"
-    await flow['page'].waitForTimeout(1_000);
-    const msg = flow['page']
-      .getByText(/used|already|applied|success|invalid/i)
-      .first();
-    await expect(msg).toBeVisible({ timeout: 10_000 });
+    // Apply twice — the second attempt can never succeed for a single-use code
+    await flow.applyPromoCode(ENV.PROMO_CODE);
+    await flow['page'].keyboard.press('Escape').catch(() => {});
+    await flow['page'].locator('#enter-promo-code #close-dialog').click().catch(() => {});
+    const res = await flow.applyPromoCode(ENV.PROMO_CODE);
+    expect(res.success).toBe(false);
+    // Live staging message (2026-10-01): "Promotion is already used"
+    expect(res.message).toMatch(/promotion is already used/i);
   });
 
   // TC-03/TC-10/TC-11 — Promo code with leading whitespace
   test('RW-04 @regression — promo code with leading whitespace is handled', async () => {
     await flow.loginForFlow(ENV.REWARDS_EMAIL, ENV.USER_PASSWORD);
     await flow.navigateToRewards();
-    await flow.enterPromoCode('  ' + ENV.PROMO_CODE);
-    const msg = flow['page']
-      .getByText(/success|applied|invalid|error/i)
-      .first();
-    await expect(msg).toBeVisible({ timeout: 10_000 });
+    // checkPromoCode() trims + uppercases, so this must NOT give the "enter a promo code" length error
+    const res = await flow.applyPromoCode('  ' + ENV.PROMO_CODE.toLowerCase());
+    expect(res.message).not.toBe('');
+    expect(res.message).not.toMatch(/please enter/i);
   });
 
   // TC-04 — Navigation to Gmail from import contacts
@@ -98,10 +99,9 @@ test.describe('10 — Rewards', () => {
     await flow.loginForFlow(ENV.REWARDS_EMAIL, ENV.USER_PASSWORD);
     await flow.navigateToRewards();
     await flow.clickInviteFriends();
-    const emailOption = flow['page']
-      .locator('button:has-text("Email"), a:has-text("Email")')
-      .first();
+    const emailOption = flow['page'].locator('#share-dialog #send-email');
     await expect(emailOption).toBeVisible({ timeout: 10_000 });
+    await expect(emailOption).toContainText(/email/i);
   });
 
   // TC-19 — Copy personal link
@@ -154,22 +154,17 @@ test.describe('10 — Rewards', () => {
   test('RW-13 @regression — invalid promo code shows error', async () => {
     await flow.loginForFlow(ENV.REWARDS_EMAIL, ENV.USER_PASSWORD);
     await flow.navigateToRewards();
-    await flow.enterPromoCode(ENV.INVALID_PROMO_CODE);
-    const error = flow['page']
-      .getByText(/invalid|not valid|error|wrong/i)
-      .first();
-    await expect(error).toBeVisible({ timeout: 10_000 });
+    const res = await flow.applyPromoCode(ENV.INVALID_PROMO_CODE);
+    expect(res.success).toBe(false);
+    expect(res.message).not.toBe('');
   });
 
   // Business promo code
   test('RW-14 @smoke @regression — business promo code can be applied', async () => {
     await flow.loginForFlow(ENV.BUSINESS_EMAIL, ENV.BUSINESS_PASSWORD);
     await flow.navigateToRewards();
-    await flow.enterPromoCode(ENV.BUSINESS_PROMO_CODE);
-    const msg = flow['page']
-      .getByText(/success|applied|used|invalid/i)
-      .first();
-    await expect(msg).toBeVisible({ timeout: 10_000 });
+    const res = await flow.applyPromoCode(ENV.BUSINESS_PROMO_CODE);
+    expect(res.message).not.toBe('');
   });
 
   // Rewards balance visible
