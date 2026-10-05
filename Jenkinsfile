@@ -42,8 +42,10 @@ pipeline {
                description: 'Only used when SUITE = module')
         string(name: 'TEST_ID', defaultValue: '', trim: true,
                description: 'Only used when SUITE = test, e.g. AC-07 or AC-(07|16)')
-        choice(name: 'WORKERS', choices: ['6', '3', '10', '1'],
-               description: 'Browsers in parallel. 6 is the tested setting on staging.')
+        string(name: 'WORKERS', defaultValue: 'auto', trim: true,
+               description: 'Browsers in parallel: auto (worked out from the agent\'s CPUs and free memory, max MAX_WORKERS), a number such as 6, or a percentage of CPU cores such as 50%')
+        string(name: 'MAX_WORKERS', defaultValue: '10', trim: true,
+               description: 'Upper limit when WORKERS = auto (keeps staging from being overloaded)')
         booleanParam(name: 'SPLIT_SHARED_ACCOUNTS', defaultValue: true,
                description: 'Run Send Money (SM-) and Auth (PA-) with one browser after the rest (they share test accounts)')
     }
@@ -68,7 +70,7 @@ pipeline {
         stage('Checkout') {
             steps {
                 checkout scm
-                echo "Suite: ${params.SUITE}  Module: ${params.MODULE}  Test: ${params.TEST_ID}  Browsers: ${params.WORKERS}  Split: ${params.SPLIT_SHARED_ACCOUNTS}"
+                echo "Suite: ${params.SUITE}  Module: ${params.MODULE}  Test: ${params.TEST_ID}  Browsers: ${params.WORKERS} (max ${params.MAX_WORKERS})  Split: ${params.SPLIT_SHARED_ACCOUNTS}"
             }
         }
 
@@ -92,7 +94,7 @@ pipeline {
                 ]) {
                     script {
                         def rc = sh(returnStatus: true, script: '''
-                            export SUITE="$SUITE" MODULE="$MODULE" TEST_ID="$TEST_ID" WORKERS="$WORKERS" SPLIT_SHARED_ACCOUNTS="$SPLIT_SHARED_ACCOUNTS"
+                            export SUITE="$SUITE" MODULE="$MODULE" TEST_ID="$TEST_ID" WORKERS="$WORKERS" MAX_WORKERS="$MAX_WORKERS" SPLIT_SHARED_ACCOUNTS="$SPLIT_SHARED_ACCOUNTS"
                             bash ci/jenkins-run.sh
                         ''')
                         if (rc != 0) {

@@ -294,7 +294,8 @@ The pipeline is in `Jenkinsfile`; the test logic it runs is in `ci/jenkins-run.s
 | SUITE | smoke, regression, all, module, test | What to run |
 | MODULE | account, send-money, … | Used when SUITE = module |
 | TEST_ID | e.g. `AC-07`, `AC-(07|16)` | Used when SUITE = test |
-| WORKERS | 6, 3, 10, 1 | Browsers in parallel |
+| WORKERS | `auto` (default), a number like `6`, or `50%` | Browsers in parallel. **auto** works it out on the agent: CPU cores − 1, limited by free memory (700 MB per browser) and by MAX_WORKERS. The console shows the choice, e.g. `Browsers: auto → 6 (CPUs: 8 → 7, free memory: 4300 MB → 6, limit: 10)` |
+| MAX_WORKERS | `10` | Upper limit for auto, so staging is not overloaded |
 | SPLIT_SHARED_ACCOUNTS | true / false | Run Send Money (SM-) and Auth (PA-) with one browser after the rest |
 
 **What a build produces:** JUnit results (pass/fail trend per test), one Playwright HTML report per pass ("main", "shared"), and the screenshots, videos and traces of failures as build artifacts. Test failures mark the build **UNSTABLE** (yellow), not FAILED.
