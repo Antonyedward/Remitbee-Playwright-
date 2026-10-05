@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Flow Suite Voice Control</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --panel: #ffffff; --text: #1b1f24; --muted: #66707a; --line: #e2e5e9;
+    --accent: #2f6fde; --pass: #1f8a4c; --fail: #c8372d; --warn: #b7791f; --mic: #d93a2b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #111418; --panel: #1a1e24; --text: #e7eaee; --muted: #9aa4ae; --line: #2b3139;
+            --accent: #6ea0ff; --pass: #4cc47e; --fail: #ff6b5e; --warn: #e2b04a; --mic: #ff5a4a; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 980px; margin: 0 auto; padding: 20px 16px 40px; display: grid; gap: 14px; }
+  header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  h1 { font-size: 20px; margin: 0; }
+  .tag { font-size: 12px; color: var(--muted); border: 1px solid var(--line); border-radius: 99px; padding: 2px 10px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  #mic { width: 72px; height: 72px; border-radius: 50%; border: none; background: var(--accent); color: #fff; font-size: 28px; cursor: pointer; flex: none; }
+  #mic.on { background: var(--mic); box-shadow: 0 0 0 6px color-mix(in srgb, var(--mic) 25%, transparent); }
+  #mic:disabled { opacity: .4; cursor: not-allowed; }
+  .heard { flex: 1; min-width: 220px; }
+  .label { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+  #transcript { font-size: 18px; min-height: 27px; }
+  #transcript .interim { color: var(--muted); }
+  #understood { margin-top: 4px; }
+  form { display: flex; gap: 8px; margin-top: 12px; }
+  input[type=text] { flex: 1; min-width: 0; padding: 9px 11px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--text); font: inherit; }
+  button.b { padding: 9px 14px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--text); font: inherit; cursor: pointer; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.danger { background: var(--fail); border-color: var(--fail); color: #fff; }
+  #confirm { display: none; margin-top: 12px; padding: 12px; border-radius: 8px; border: 1px solid var(--warn); background: color-mix(in srgb, var(--warn) 10%, transparent); }
+  #confirm.show { display: block; }
+  .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  .kpi { border: 1px solid var(--line); border-radius: 10px; padding: 10px; text-align: center; }
+  .kpi b { display: block; font-size: 24px; }
+  .pass { color: var(--pass); } .fail { color: var(--fail); } .muted { color: var(--muted); }
+  .bar { height: 8px; background: var(--line); border-radius: 99px; overflow: hidden; margin: 12px 0 6px; }
+  .bar > div { height: 100%; width: 0; background: var(--accent); transition: width .3s; }
+  #fails { margin: 8px 0 0; padding-left: 18px; }
+  #log { height: 260px; overflow: auto; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px; font: 12px/1.4 ui-monospace, Menlo, monospace; white-space: pre-wrap; word-break: break-word; }
+  .help li { margin: 2px 0; }
+  label.toggle { display: inline-flex; gap: 6px; align-items: center; color: var(--muted); font-size: 13px; }
+  @media (max-width: 600px) { .kpis { grid-template-columns: repeat(2, 1fr); } }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>🎙 Flow Suite Voice Control</h1>
+    <div class="row"><span class="tag" id="jevTag">Jev: …</span><span class="tag" id="conn">connecting…</span></div>
+  </header>
+
+  <section class="card">
+    <div class="row">
+      <button id="mic" title="Click to talk (or press Space)">🎤</button>
+      <div class="heard">
+        <div class="label">Heard</div>
+        <div id="transcript"><span class="muted">Click the mic and say e.g. “run the account module headless”.</span></div>
+        <div id="understood" class="muted"></div>
+      </div>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <label class="toggle"><input type="checkbox" id="always"> keep listening</label>
+      <label class="toggle"><input type="checkbox" id="speak" checked> speak replies</label>
+      <label class="toggle"><input type="checkbox" id="speakFails" checked> say each failure</label>
+    </div>
+    <form id="typed">
+      <input type="text" id="typedText" placeholder="…or type a command: run AC-07, run smoke headless, status, stop">
+      <button class="b" type="submit">Send</button>
+    </form>
+    <div id="confirm">
+      <div id="confirmText"></div>
+      <div class="row" style="margin-top:8px">
+        <button class="b primary" id="yes">Yes, start (say “yes”)</button>
+        <button class="b" id="no">Cancel (say “no”)</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="row" style="justify-content:space-between">
+      <div><div class="label">Run</div><div id="runLabel">Nothing running</div></div>
+      <div class="row">
+        <button class="b" id="statusBtn">Status</button>
+        <button class="b" id="reportBtn">Open report</button>
+        <button class="b danger" id="stopBtn">Stop</button>
+      </div>
+    </div>
+    <div class="bar"><div id="barFill"></div></div>
+    <div class="muted" id="current"></div>
+    <div class="kpis" style="margin-top:10px">
+      <div class="kpi"><b id="kDone">0</b><span class="muted">done</span></div>
+      <div class="kpi"><b id="kPass" class="pass">0</b><span class="muted">passed</span></div>
+      <div class="kpi"><b id="kFail" class="fail">0</b><span class="muted">failed</span></div>
+      <div class="kpi"><b id="kSkip">0</b><span class="muted">skipped</span></div>
+    </div>
+    <ul id="fails"></ul>
+  </section>
+
+  <section class="card">
+    <div class="label">Output</div>
+    <div id="log"></div>
+  </section>
+
+  <section class="card help">
+    <div class="label">Things you can say</div>
+    <ul>
+      <li>“Run the <b>account</b> module” · “run escalation <b>headless</b>” · “run DT One module in the background”</li>
+      <li>“Run <b>AC 07</b>” · “run A C oh seven and A C sixteen” (same prefix)</li>
+      <li>“Run <b>smoke</b> tests” · “run <b>regression</b> headless” · “run <b>everything</b>”</li>
+      <li>“<b>Rerun the failed</b> tests” · “<b>status</b>” / “how is it going” · “<b>stop</b>” · “open the <b>report</b>”</li>
+      <li>Every run asks for a “yes” first. Don’t touch the test browser while it runs.</li>
+    </ul>
+  </section>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let pending = null;          // command waiting for yes/no
+let listening = false;
+let speaking = false;
+let lastRunId = null;
+
+// ── Speech out ───────────────────────────────────────────────
+function say(text) {
+  if (!$('speak').checked || !('speechSynthesis' in window) || !text) return;
+  const u = new SpeechSynthesisUtterance(text);
+  u.rate = 1.05;
+  u.onstart = () => { speaking = true; };
+  u.onend = u.onerror = () => { speaking = false; };
+  speechSynthesis.cancel();
+  speechSynthesis.speak(u);
+}
+
+// ── Speech in (Chrome Web Speech API) ────────────────────────
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+let rec = null;
+if (!SR) {
+  $('mic').disabled = true;
+  $('transcript').innerHTML = '<span class="muted">This browser has no speech recognition — use Chrome, or type commands below.</span>';
+} else {
+  rec = new SR();
+  rec.lang = 'en-US';
+  rec.interimResults = true;
+  rec.continuous = false;
+  rec.onresult = (e) => {
+    if (speaking) return; // ignore our own voice
+    let finalText = '', interim = '';
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      const r = e.results[i];
+      if (r.isFinal) finalText += r[0].transcript; else interim += r[0].transcript;
+    }
+    $('transcript').innerHTML = esc(finalText) + (interim ? ` <span class="interim">${esc(interim)}</span>` : '');
+    if (finalText.trim()) handleText(finalText.trim());
+  };
+  rec.onend = () => {
+    if (listening && $('always').checked) { try { rec.start(); } catch {} return; }
+    setListening(false);
+  };
+  rec.onerror = (e) => {
+    if (e.error === 'not-allowed') { $('understood').textContent = 'Microphone blocked — allow it in the address bar.'; setListening(false); }
+  };
+}
+function setListening(on) {
+  listening = on;
+  $('mic').classList.toggle('on', on);
+}
+function toggleMic() {
+  if (!rec) return;
+  if (listening) { setListening(false); rec.stop(); return; }
+  speechSynthesis.cancel();
+  setListening(true);
+  try { rec.start(); } catch {}
+}
+$('mic').onclick = toggleMic;
+document.addEventListener('keydown', (e) => {
+  if (e.code === 'Space' && document.activeElement.tagName !== 'INPUT') { e.preventDefault(); toggleMic(); }
+});
+
+// ── Understanding + confirmation ─────────────────────────────
+async function post(url, body) {
+  const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  return r.json();
+}
+
+async function handleText(text) {
+  $('understood').textContent = 'Understanding…';
+  const res = await post('/api/interpret', { text, pending: Boolean(pending) });
+  const cmd = res.command || { intent: 'none' };
+  const via = cmd.via === 'jev' ? ' (Jev)' : '';
+
+  if (pending && cmd.intent === 'confirm_yes') return confirmYes();
+  if (pending && cmd.intent === 'confirm_no') return confirmNo();
+
+  if (res.error) { $('understood').textContent = res.error; say(res.error); return; }
+  if (cmd.intent === 'none') {
+    const msg = cmd.error ? `Jev error: ${cmd.error}` : "Sorry, I didn't catch a command. Try “run the account module”.";
+    $('understood').textContent = msg; say("Sorry, I didn't catch that."); return;
+  }
+  $('understood').textContent = `Understood${via}: ${res.summary}`;
+
+  if (res.needsConfirm) {
+    pending = cmd;
+    $('confirmText').textContent = `${res.summary} Start it?`;
+    $('confirm').classList.add('show');
+    say(`${res.summary} Say yes to start.`);
+    return;
+  }
+  execute(cmd);
+}
+
+async function execute(cmd) {
+  const res = await post('/api/execute', { command: cmd });
+  const sentence = res.sentence || res.error || '';
+  $('understood').textContent = sentence;
+  say(sentence);
+}
+function confirmYes() {
+  const cmd = pending; pending = null;
+  $('confirm').classList.remove('show');
+  if (cmd) execute(cmd);
+}
+function confirmNo() {
+  pending = null;
+  $('confirm').classList.remove('show');
+  $('understood').textContent = 'Cancelled.';
+  say('Cancelled.');
+}
+$('yes').onclick = confirmYes;
+$('no').onclick = confirmNo;
+$('typed').onsubmit = (e) => {
+  e.preventDefault();
+  const t = $('typedText').value.trim();
+  if (!t) return;
+  $('transcript').textContent = t;
+  $('typedText').value = '';
+  handleText(t);
+};
+$('stopBtn').onclick = () => execute({ intent: 'stop' });
+$('statusBtn').onclick = () => execute({ intent: 'status' });
+$('reportBtn').onclick = () => execute({ intent: 'open_report' });
+
+// ── Live progress (Server-Sent Events) ───────────────────────
+function esc(s) { return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+function render(r) {
+  if (!r) return;
+  const stateText = { running: '⏳ running', passed: '✅ passed', failed: '❌ failed', stopped: '⏹ stopped', error: '⚠ error' }[r.state] || r.state;
+  $('runLabel').textContent = `${r.label} — ${stateText} — ${Math.floor(r.elapsedSec / 60)}m ${r.elapsedSec % 60}s`;
+  $('kDone').textContent = r.total ? `${r.done}/${r.total}` : r.done;
+  $('kPass').textContent = r.passed;
+  $('kFail').textContent = r.failed;
+  $('kSkip').textContent = r.skipped;
+  $('barFill').style.width = r.total ? `${Math.min(100, (r.done / r.total) * 100)}%` : (r.state === 'running' ? '5%' : '100%');
+  $('current').textContent = r.state === 'running' && r.current ? `Now: ${r.current.title}` : '';
+  $('fails').innerHTML = r.failures.map((f) => `<li class="fail">${esc(f.title)}</li>`).join('');
+}
+function addLog(line) {
+  const el = $('log');
+  const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 20;
+  el.textContent += line + '\n';
+  if (el.textContent.length > 120000) el.textContent = el.textContent.slice(-100000);
+  if (atBottom) el.scrollTop = el.scrollHeight;
+}
+
+function connect() {
+  const es = new EventSource('/api/events');
+  es.addEventListener('hello', (e) => {
+    const d = JSON.parse(e.data);
+    $('conn').textContent = 'connected';
+    $('jevTag').textContent = d.jev ? 'Jev: on' : 'Jev: off (rules only)';
+    $('log').textContent = '';
+    (d.log || []).forEach(addLog);
+    if (d.run) { lastRunId = d.run.id; render(d.run); }
+  });
+  es.addEventListener('started', (e) => { const r = JSON.parse(e.data); lastRunId = r.id; $('log').textContent = ''; render(r); });
+  es.addEventListener('progress', (e) => render(JSON.parse(e.data)));
+  es.addEventListener('log', (e) => addLog(JSON.parse(e.data).line));
+  es.addEventListener('failure', (e) => {
+    const f = JSON.parse(e.data);
+    if ($('speakFails').checked) say(`${f.id || 'A test'} failed.`);
+  });
+  es.addEventListener('finished', (e) => {
+    const r = JSON.parse(e.data);
+    render(r);
+    let s;
+    if (r.state === 'stopped') s = `Run stopped. ${r.passed} passed, ${r.failed} failed.`;
+    else if (r.state === 'error') s = `The run could not start. ${r.error || ''}`;
+    else {
+      s = `Run finished. ${r.passed} passed, ${r.failed} failed${r.skipped ? `, ${r.skipped} skipped` : ''}.`;
+      if (r.failures.length) s += ` Failed: ${r.failures.slice(0, 5).map((f) => f.id || f.title).join(', ')}. Say "rerun the failed tests" to try them again.`;
+    }
+    $('understood').textContent = s;
+    say(s);
+  });
+  es.onerror = () => { $('conn').textContent = 'disconnected — is the server running?'; };
+  es.onopen = () => { $('conn').textContent = 'connected'; };
+}
+connect();
+</script>
+</body>
+</html>

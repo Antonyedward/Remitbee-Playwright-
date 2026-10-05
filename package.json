@@ -8,6 +8,9 @@
     "test:flow": "cross-env NODE_OPTIONS=--max-old-space-size=1024 npx playwright test --config=playwright.flow.config.ts --project=flow-chromium",
     "flow:smoke": "cross-env NODE_OPTIONS=--max-old-space-size=1024 npx playwright test --config=playwright.flow.config.ts --project=flow-chromium --grep @smoke",
     "flow:regression": "cross-env NODE_OPTIONS=--max-old-space-size=1024 npx playwright test --config=playwright.flow.config.ts --project=flow-chromium --grep @regression",
+    "test:flow:headless": "cross-env HEADLESS=true NODE_OPTIONS=--max-old-space-size=1024 npx playwright test --config=playwright.flow.config.ts --project=flow-chromium",
+    "flow:smoke:headless": "cross-env HEADLESS=true NODE_OPTIONS=--max-old-space-size=1024 npx playwright test --config=playwright.flow.config.ts --project=flow-chromium --grep @smoke",
+    "flow:regression:headless": "cross-env HEADLESS=true NODE_OPTIONS=--max-old-space-size=1024 npx playwright test --config=playwright.flow.config.ts --project=flow-chromium --grep @regression",
     "flow:signup": "cross-env NODE_OPTIONS=--max-old-space-size=1024 npx playwright test --config=playwright.flow.config.ts --project=flow-chromium tests/flows/00-signup.flow.spec.ts",
     "flow:auth": "cross-env NODE_OPTIONS=--max-old-space-size=1024 npx playwright test --config=playwright.flow.config.ts --project=flow-chromium tests/flows/01-auth.flow.spec.ts",
     "flow:dashboard": "cross-env NODE_OPTIONS=--max-old-space-size=1024 npx playwright test --config=playwright.flow.config.ts --project=flow-chromium tests/flows/02-dashboard.flow.spec.ts",
@@ -28,7 +31,8 @@
     "flow:help": "cross-env NODE_OPTIONS=--max-old-space-size=1024 npx playwright test --config=playwright.flow.config.ts --project=flow-chromium tests/flows/17-help.flow.spec.ts",
     "flow:currency-converter": "cross-env NODE_OPTIONS=--max-old-space-size=1024 npx playwright test --config=playwright.flow.config.ts --project=flow-chromium tests/flows/18-currency-converter.flow.spec.ts",
     "flow:voice": "cross-env NODE_OPTIONS=--max-old-space-size=1024 npx playwright test --config=playwright.flow.config.ts --project=flow-chromium tests/flows/19-voice.flow.spec.ts",
-    "flow:report": "npx playwright show-report"
+    "flow:report": "npx playwright show-report",
+    "voice:control": "node voice-control/server.mjs"
   },
   "dependencies": {
     "@typesafe-ai/sdk": "^0.6.0",

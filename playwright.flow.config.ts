@@ -15,6 +15,13 @@ const storageState = fs.existsSync(PERSONAL_AUTH) ? PERSONAL_AUTH : undefined;
 export default defineConfig({
   testDir: './tests/flows',
   testMatch: '**/*.flow.spec.ts',
+  // Modules switched off (05 Oct 2026): Help and Currency converter are not configured properly on staging,
+  // so these files are not loaded at all (not in regression, smoke or full runs).
+  // To run them anyway: RUN_PARKED=true ./run.sh help   — or delete the two lines below to switch them back on.
+  testIgnore: process.env.RUN_PARKED === 'true' ? [] : [
+    '**/17-help.flow.spec.ts',
+    '**/18-currency-converter.flow.spec.ts',
+  ],
   timeout: 90_000,
   expect: { timeout: 15_000 },
   fullyParallel: false,
@@ -27,7 +34,9 @@ export default defineConfig({
   ],
   use: {
     baseURL: process.env.BASE_URL || 'https://www.cp.wisecapitals.com',
-    headless: false,   // Always open a visible browser window
+    // Headed by default (visible browser). Run headless with HEADLESS=true,
+    // e.g. `HEADLESS=true npm run flow:rates` or `npm run test:flow:headless`.
+    headless: process.env.HEADLESS === 'true',
     viewport: { width: 1280, height: 800 },
     actionTimeout: 20_000,
     navigationTimeout: 30_000,
