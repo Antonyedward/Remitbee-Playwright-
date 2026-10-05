@@ -26,11 +26,14 @@ export default defineConfig({
   expect: { timeout: 15_000 },
   fullyParallel: false,
   workers: 1,
-  retries: 0,
+  // 1 retry on Jenkins (CI=true) so a staging hiccup doesn't fail the build; none locally.
+  retries: process.env.CI ? 1 : 0,
   outputDir: process.env.PW_OUTPUT_DIR || './test-results',
   reporter: [
     ['list'],
     ['html', { outputFolder: process.env.PW_REPORT_DIR || 'playwright-report', open: 'never' }],
+    // JUnit results for Jenkins trend graphs (only on CI; ci/jenkins-run.sh sets PW_JUNIT_FILE per pass)
+    ...(process.env.CI ? [['junit', { outputFile: process.env.PW_JUNIT_FILE || 'junit-results/results.xml' }] as const] : []),
   ],
   use: {
     baseURL: process.env.BASE_URL || 'https://www.cp.wisecapitals.com',

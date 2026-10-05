@@ -27,3 +27,8 @@ yarn-error.log*
 # OS files
 .DS_Store
 Thumbs.db
+
+# CI output and private login sessions
+junit-results/
+.npm/
+playwright/.auth/

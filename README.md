@@ -282,3 +282,35 @@ Then open **http://localhost:4000** in **Chrome**, click the 🎤 button (or pre
 - Test IDs in one command must share a prefix (AC-07 and AC-16 is fine; AC-07 and ES-11 is not).
 
 Files: `voice-control/server.mjs` (runner + web server), `voice-control/commands.mjs` (allowed commands, rules, Jev questions), `voice-control/index.html` (panel).
+
+## 16. Jenkins
+
+The pipeline is in `Jenkinsfile`; the test logic it runs is in `ci/jenkins-run.sh`.
+
+**Job parameters**
+
+| Parameter | Values | Meaning |
+|---|---|---|
+| SUITE | smoke, regression, all, module, test | What to run |
+| MODULE | account, send-money, … | Used when SUITE = module |
+| TEST_ID | e.g. `AC-07`, `AC-(07|16)` | Used when SUITE = test |
+| WORKERS | 6, 3, 10, 1 | Browsers in parallel |
+| SPLIT_SHARED_ACCOUNTS | true / false | Run Send Money (SM-) and Auth (PA-) with one browser after the rest |
+
+**What a build produces:** JUnit results (pass/fail trend per test), one Playwright HTML report per pass ("main", "shared"), and the screenshots, videos and traces of failures as build artifacts. Test failures mark the build **UNSTABLE** (yellow), not FAILED.
+
+**One-time setup (DevOps)**
+1. Agent with label `selenium` and Docker. The build runs in `mcr.microsoft.com/playwright:v1.61.1-noble` (Node + Chromium included). No Docker? See the comment at the top of the Jenkinsfile.
+2. Plugins: Pipeline, Docker Pipeline, Credentials Binding, JUnit, HTML Publisher, Timestamper.
+3. Credentials (kind *Secret text*): `remitbee-pw-common-password` (test accounts password) and `remitbee-pw-otp` (static OTP).
+4. Network access from the agent to `www.cp.wisecapitals.com` and `api.wisecapitals.com`.
+5. Create a Pipeline (or Multibranch) job pointing at this repository.
+
+**Try it locally first** (prints the commands without running):
+```bash
+SUITE=regression DRY_RUN=1 bash ci/jenkins-run.sh
+```
+Run it for real on your Mac exactly as Jenkins would:
+```bash
+SUITE=smoke WORKERS=6 bash ci/jenkins-run.sh
+```
